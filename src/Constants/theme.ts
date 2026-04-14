@@ -1,0 +1,30 @@
+export const COLORS = {
+  PRIMARY: '#1C39BB',
+  WHITE: '#FFFFFF',
+  TEXT_PRIMARY: '#1E1E1E',
+  TEXT_SECONDARY: '#6B6B6B',
+  TEXT_MUTED: '#8E8E8E',
+  BACKGROUND: '#F5F6FA',
+  BORDER: '#D9D9D9',
+  CARD_BORDER: '#E0E5F0',
+  PLACEHOLDER: '#AAAAAA',
+  CARD_SELECTED_BG: '#EEF1FF',
+  CARD_SELECTED_BORDER: '#1C39BB',
+  ERROR: '#D32F2F',
+};
+
+export const SPACING = {
+  XS: 4,
+  SM: 8,
+  MD: 16,
+  LG: 24,
+  XL: 32,
+};
+
+export const FONT_SIZE = {
+  SM: 12,
+  MD: 14,
+  LG: 16,
+  XL: 20,
+  XXL: 28,
+};

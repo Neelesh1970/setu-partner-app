@@ -1,0 +1,39 @@
+---
+description: SETU API handling rules — axios, service layer, error handling
+globs: src/services/**,src/features/**
+alwaysApply: false
+---
+
+# API Handling Rules
+
+## Always Use the Axios Instance
+```ts
+// ✅ GOOD
+import api from '../api/axiosInstance';
+const data = await api.get('/users');
+
+// ❌ BAD — raw fetch or direct axios import
+const data = await fetch('/users');
+```
+
+## Encapsulate Calls in Service Functions
+```ts
+// src/services/authService.ts ✅
+export const login = async (credentials: LoginPayload): Promise<AuthResponse> => {
+  try {
+    const { data } = await api.post('/auth/login', credentials);
+    return data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+// ❌ BAD — API call inside a component
+const MyScreen = () => {
+  useEffect(() => { axios.get('/users'); }, []);
+};
+```
+
+## Error Handling
+- Always wrap async calls in `try/catch` or `.catch()`.
+- Never swallow errors silently.

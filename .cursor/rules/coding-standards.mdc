@@ -1,0 +1,36 @@
+---
+description: SETU general coding standards - naming, structure, and principles
+alwaysApply: true
+---
+
+# SETU General Coding Standards
+
+## Core Principles
+- Functional components ONLY. Class components are forbidden.
+- All new files must be `.tsx` or `.ts`. No new `.js` files.
+- DRY: extract shared logic into `src/hooks` or `src/Utils`.
+
+## Naming Conventions
+- **Components/Screens**: PascalCase → `UserProfile.tsx`, `DashboardScreen.tsx`
+- **Functions/Variables**: camelCase → `fetchUserData`, `isLoggedIn`
+- **Constants**: UPPER_SNAKE_CASE → `API_BASE_URL`, `MAX_RETRY_COUNT`
+- **Interfaces/Types**: PascalCase → `User`, `ApiResponse`
+- **Feature folders**: camelCase → `auth/`, `userProfile/`
+- **Component folders**: PascalCase → `Button/`, `Header/`
+
+## Directory Structure
+```
+src/
+├── features/       Redux slices (authSlice.ts, authAPI.ts, selectors.ts)
+├── Screens/        Screen components grouped by feature
+├── Components/     Reusable UI atoms/molecules
+├── hooks/          Custom React hooks
+├── services/       API service functions
+├── Utils/          Helper/utility functions
+└── Constants/      Theme, colors, config constants
+```
+
+## State Management
+- Use Redux Toolkit for global state; `useState` for UI-only state.
+- Slices live in `src/features/<feature>/`.
+- Always use `useSelector` and `useDispatch` hooks.

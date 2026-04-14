@@ -1,0 +1,35 @@
+---
+description: SETU React Native component patterns for .tsx files
+globs: **/*.tsx
+alwaysApply: false
+---
+
+# React Component Patterns
+
+## Component Structure
+```tsx
+// ✅ GOOD — typed functional component
+const UserCard: React.FC<UserCardProps> = ({ name, age }) => {
+  const [expanded, setExpanded] = useState(false); // local UI state only
+  return <View>...</View>;
+};
+
+// ❌ BAD — class component
+class UserCard extends React.Component { ... }
+```
+
+## Styling
+```tsx
+// ✅ GOOD — StyleSheet.create for performance
+const styles = StyleSheet.create({ container: { flex: 1 } });
+
+// ❌ BAD — inline style object created every render
+<View style={{ flex: 1, padding: 20 }} />
+```
+
+- Use theme constants from `src/Constants/theme.ts` for colors and typography.
+- Place `StyleSheet.create(...)` at the **bottom** of the file, after `export default`.
+
+## Comments
+- Explain **why**, not what. Code should be self-documenting.
+- Use JSDoc for complex utility functions.
