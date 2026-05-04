@@ -20,7 +20,10 @@ import {
   verifyLoginOtp,
   resendLoginOtp,
 } from '../../Services/authService';
-import { saveAuthTokens, saveUser } from '../../Utils/storage';
+import { saveAuthTokens, saveUser, saveLabUserId, saveUserID } from '../../Utils/storage';
+import { useAppDispatch } from '../../store/hooks';
+import { setSession } from '../../store/authSlice';
+import type { VerifiedUser } from '../../Services/authService';
 
 type OtpNavProp = NativeStackNavigationProp<RootStackParamList, 'OtpVerification'>;
 type OtpRouteProp = RouteProp<RootStackParamList, 'OtpVerification'>;
@@ -28,6 +31,7 @@ type OtpRouteProp = RouteProp<RootStackParamList, 'OtpVerification'>;
 const OTP_LENGTH = 6;
 
 const OtpVerificationScreen: React.FC = () => {
+  const dispatch = useAppDispatch();
   const navigation = useNavigation<OtpNavProp>();
   const route = useRoute<OtpRouteProp>();
   const { mobile, authFlow = 'register' } = route.params;
@@ -76,10 +80,33 @@ const OtpVerificationScreen: React.FC = () => {
         authFlow === 'login'
           ? await verifyLoginOtp({ mobile, otp: otpCode })
           : await verifyRegistrationOtp({ mobile, otp: otpCode });
-      console.log('[OtpVerificationScreen] verify-otp response:', response);
+      console.log('[OtpVerificationScreen] verify-otp full response:', JSON.stringify(response, null, 2));
+      console.log('[OtpVerificationScreen] token:', response?.token);
+      console.log('[OtpVerificationScreen] refreshToken:', response?.refreshToken);
+      console.log('[OtpVerificationScreen] user:', JSON.stringify(response?.user, null, 2));
+      console.log('[OtpVerificationScreen] provider:', JSON.stringify(response?.provider, null, 2));
+
+      if (authFlow === 'login' && (!response.token || !response.refreshToken)) {
+        Alert.alert('Error', 'Missing token or refreshToken in verify response.');
+        return;
+      }
 
       await saveAuthTokens(response.token, response.refreshToken);
       await saveUser(response.user);
+      if (response.user?.id) {
+        await saveUserID(String(response.user.id));
+      }
+      if (authFlow === 'login' && response.user?.id) {
+        await saveLabUserId(response.user.id);
+        console.log('[OtpVerificationScreen] lab_user_id saved:', response.user.id);
+      }
+      dispatch(
+        setSession({
+          isAuthenticated: true,
+          user: (response.user ?? null) as VerifiedUser | null,
+          userId: response.user?.id ? String(response.user.id) : null,
+        }),
+      );
 
       if (authFlow === 'login') {
         navigation.reset({

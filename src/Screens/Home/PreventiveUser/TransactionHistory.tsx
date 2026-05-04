@@ -1,0 +1,373 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  StatusBar,
+  RefreshControl,
+} from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ms, vs, s } from 'react-native-size-matters';
+import { RootStackParamList } from '../../../navigation/types';
+import { COLORS } from '../../../Constants/theme';
+import PreventiveHealthHeader from './PreventiveHealthHeader';
+import {
+  flattenWalletTransactionBuckets,
+  getLabWalletTransactions,
+  type LabWalletTransactionsData,
+} from '../../../api/labWalletApi';
+
+const PRIMARY = '#1C39BB';
+const LABEL_GRAY = '#6B7280';
+const BORDER = '#E5E7EB';
+const DEBIT_RED = '#B91C1C';
+
+type TxRow = {
+  title: string;
+  subtitle: string;
+  amount: string;
+  positive: boolean;
+};
+
+type TxSection = {
+  title: string;
+  data: TxRow[];
+};
+
+type TransactionHistoryNav = NativeStackNavigationProp<RootStackParamList, 'TransactionHistory'>;
+
+function formatTxDate(raw: unknown): string {
+  if (raw == null || raw === '') {
+    return '';
+  }
+  const t = typeof raw === 'string' || typeof raw === 'number' ? Date.parse(String(raw)) : NaN;
+  if (Number.isNaN(t)) {
+    return '';
+  }
+  return new Intl.DateTimeFormat('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(t));
+}
+
+function txTimestamp(item: unknown): number {
+  if (!item || typeof item !== 'object') {
+    return 0;
+  }
+  const o = item as Record<string, unknown>;
+  const raw = o.created_at ?? o.updated_at ?? o.date ?? o.timestamp;
+  const t = typeof raw === 'string' || typeof raw === 'number' ? Date.parse(String(raw)) : NaN;
+  return Number.isNaN(t) ? 0 : t;
+}
+
+function mapTxItem(item: unknown): TxRow | null {
+  if (!item || typeof item !== 'object') {
+    return null;
+  }
+  const o = item as Record<string, unknown>;
+  const title = String(
+    o.title ??
+      o.description ??
+      o.narration ??
+      o.remark ??
+      o.transaction_type ??
+      'Transaction',
+  );
+  const subtitle = formatTxDate(o.created_at ?? o.updated_at ?? o.date ?? o.timestamp);
+
+  let amountNum = 0;
+  if (typeof o.amount === 'number') {
+    amountNum = o.amount;
+  } else if (typeof o.amount === 'string') {
+    amountNum = parseFloat(o.amount) || 0;
+  }
+
+  const typeStr = String(o.type ?? o.direction ?? '').toLowerCase();
+  const isDebit =
+    typeStr.includes('debit') ||
+    typeStr.includes('withdraw') ||
+    typeStr.includes('withdrawal') ||
+    amountNum < 0;
+
+  const signed = isDebit && amountNum > 0 ? -amountNum : amountNum;
+  const positive = signed >= 0;
+  const abs = Math.abs(signed);
+
+  const currency = typeof o.currency === 'string' ? o.currency : 'INR';
+  const sym = !currency || currency === 'INR' ? '₹' : `${currency} `;
+  const sign = positive ? '+' : '-';
+  const amount = `${sign}${sym}${abs.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+
+  return { title, subtitle, amount, positive };
+}
+
+function sectionTitleFromTs(ts: number): string {
+  if (!ts) {
+    return 'Other';
+  }
+  const d = new Date(ts);
+  const y = d.getFullYear();
+  const cy = new Date().getFullYear();
+  if (y === cy) {
+    return new Intl.DateTimeFormat('en-IN', { month: 'long' }).format(d);
+  }
+  return new Intl.DateTimeFormat('en-IN', { month: 'long', year: 'numeric' }).format(d);
+}
+
+function buildSections(txData: LabWalletTransactionsData | null): TxSection[] {
+  const flat = flattenWalletTransactionBuckets(txData);
+  const withTs = flat
+    .map(item => {
+      const row = mapTxItem(item);
+      const ts = txTimestamp(item);
+      return row ? { row, ts } : null;
+    })
+    .filter((x): x is { row: TxRow; ts: number } => x != null);
+
+  withTs.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+
+  const sections: TxSection[] = [];
+  for (const { row, ts } of withTs) {
+    const title = sectionTitleFromTs(ts);
+    const last = sections[sections.length - 1];
+    if (last && last.title === title) {
+      last.data.push(row);
+    } else {
+      sections.push({ title, data: [row] });
+    }
+  }
+  return sections;
+}
+
+const TransactionHistory: React.FC = () => {
+  const navigation = useNavigation<TransactionHistoryNav>();
+  const insets = useSafeAreaInsets();
+  const bottomPad = Math.max(insets.bottom, vs(16));
+
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sections, setSections] = useState<TxSection[]>([]);
+
+  const loadTransactions = useCallback(async (opts?: { isRefresh?: boolean }) => {
+    if (opts?.isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+    setError(null);
+    try {
+      const txData = await getLabWalletTransactions(1, 20);
+      setSections(buildSections(txData));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to load transactions.');
+      setSections([]);
+    } finally {
+      if (opts?.isRefresh) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTransactions();
+  }, [loadTransactions]);
+
+  return (
+    <View style={styles.root}>
+      <StatusBar barStyle="light-content" backgroundColor={PRIMARY} />
+
+      <SafeAreaView style={styles.headerSafe}>
+        <PreventiveHealthHeader
+          title="Transaction History"
+          onBackPress={() => navigation.goBack()}
+        />
+      </SafeAreaView>
+
+      {loading && !refreshing ? (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={PRIMARY} />
+        </View>
+      ) : error ? (
+        <View style={[styles.centered, styles.errorPad]}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      ) : (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[
+            styles.listContent,
+            sections.length === 0 ? styles.listContentEmpty : null,
+            { paddingBottom: bottomPad + vs(24) },
+          ]}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => loadTransactions({ isRefresh: true })}
+              colors={[PRIMARY]}
+              tintColor={PRIMARY}
+            />
+          }
+        >
+          {sections.length === 0 ? (
+            <View style={styles.emptyWrap}>
+              <Text style={styles.emptyText}>No transactions yet.</Text>
+            </View>
+          ) : (
+            sections.map((section, sidx) => (
+              <View key={`${section.title}-${sidx}`} style={styles.sectionBlock}>
+                <View style={styles.monthHeader}>
+                  <View style={styles.monthLine} />
+                  <Text style={styles.monthText}>{section.title}</Text>
+                  <View style={styles.monthLine} />
+                </View>
+                <View style={styles.txCard}>
+                  {section.data.map((item, index) => (
+                    <View key={`${item.title}-${item.subtitle}-${index}`}>
+                      {index > 0 ? <View style={styles.txDivider} /> : null}
+                      <View style={styles.txRow}>
+                        <View style={styles.txLeft}>
+                          <Text style={styles.txTitle} numberOfLines={2}>
+                            {item.title}
+                          </Text>
+                          <Text style={styles.txSub}>{item.subtitle || '—'}</Text>
+                        </View>
+                        <Text
+                          style={[styles.txAmount, item.positive ? styles.txCredit : styles.txDebit]}
+                        >
+                          {item.amount}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ))
+          )}
+        </ScrollView>
+      )}
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: COLORS.BACKGROUND,
+  },
+  headerSafe: {
+    backgroundColor: PRIMARY,
+    borderBottomLeftRadius: ms(16),
+    borderBottomRightRadius: ms(16),
+    overflow: 'hidden',
+  },
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorPad: {
+    paddingHorizontal: ms(24),
+  },
+  errorText: {
+    fontSize: s(15),
+    color: COLORS.TEXT_PRIMARY,
+    textAlign: 'center',
+  },
+  scroll: {
+    flex: 1,
+  },
+  listContent: {
+    paddingHorizontal: ms(16),
+    paddingTop: vs(12),
+    flexGrow: 1,
+  },
+  listContentEmpty: {
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
+  sectionBlock: {
+    marginBottom: vs(4),
+  },
+  monthHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: vs(14),
+    backgroundColor: COLORS.BACKGROUND,
+  },
+  monthLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: BORDER,
+  },
+  monthText: {
+    marginHorizontal: ms(12),
+    fontSize: s(12),
+    fontWeight: '600',
+    color: LABEL_GRAY,
+  },
+  txCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: ms(12),
+    borderWidth: 1,
+    borderColor: BORDER,
+    overflow: 'hidden',
+    marginBottom: vs(10),
+  },
+  txRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingVertical: vs(14),
+    paddingHorizontal: ms(16),
+    gap: ms(12),
+  },
+  txLeft: {
+    flex: 1,
+    minWidth: 0,
+  },
+  txTitle: {
+    fontSize: s(14),
+    fontWeight: '700',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  txSub: {
+    marginTop: vs(4),
+    fontSize: s(13),
+    color: LABEL_GRAY,
+  },
+  txAmount: {
+    fontSize: s(15),
+    fontWeight: '700',
+  },
+  txCredit: {
+    color: PRIMARY,
+  },
+  txDebit: {
+    color: DEBIT_RED,
+  },
+  txDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: BORDER,
+    marginLeft: ms(16),
+  },
+  emptyWrap: {
+    paddingVertical: vs(40),
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: s(15),
+    color: LABEL_GRAY,
+  },
+});
+
+export default TransactionHistory;

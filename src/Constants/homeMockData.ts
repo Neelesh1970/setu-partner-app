@@ -90,5 +90,5 @@ export const HOME_VISIT_TESTS: HomeVisitTestItem[] = [
 /** Hero banner (`/background-images/:id`) */
 export const BACKGROUND_IMAGE_API_ID = 8;
 
-/** My Wallet illustration (`/background-images/:id`) */
-export const WALLET_BACKGROUND_IMAGE_API_ID = 9;
+/** My Wallet illustration (`/background-images/:id`, CMS title `wallet`) */
+export const WALLET_BACKGROUND_IMAGE_API_ID = 5;
