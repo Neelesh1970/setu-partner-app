@@ -8,6 +8,73 @@ export type RootStackParamList = {
   };
   IdentityVerification: undefined;
   Home: undefined;
+  Profile: undefined;
+  MyWallet: undefined;
+  TransactionHistory: undefined;
   NewUserRegistration: undefined;
+  NewuserRegister: undefined;
   TestHome: undefined;
+  RegisterOtp: { mobile: string };
+  UserDetails: undefined;
+  PremiumPrice: undefined;
+  RegisterWithOtp: undefined;
+  RegisterVerifyOtp: {
+    mobile: string;
+    alreadyRegistered: boolean;
+  };
+  RegisterName: {
+    mobile: string;
+    lab_user_id: string;
+  };
+  RegisterDob: {
+    mobile: string;
+    firstName: string;
+    lastName: string;
+    lab_user_id: string;
+  };
+  RegisterGender: {
+    mobile: string;
+    firstName: string;
+    lastName: string;
+    dob: string;
+    lab_user_id: string;
+  };
+  RegisterPlans: {
+    mobile: string;
+    firstName: string;
+    lastName: string;
+    dob: string;
+    gender: string;
+    lab_user_id: string;
+  };
+  Dashboard: undefined;
+  PreventiveHealth: undefined;
+  PreventiveHealthHeader: undefined;
+  HealthCheckupDevices: undefined;
+  DeviceOverview: { deviceData: any };
+  HealthPackage: undefined;
+  Screening: undefined;
+  HealthPackageOverview: { packageId: string };
+  PreventiveCart: undefined;
+  PreventiveBookingDetail: undefined;
+  PreventiveCheckout: { bookingId?: string } | undefined;
+  PreventivePayment: { bookingId: string; amountPayable?: number } | undefined;
+  PreventiveBookingSummary: { bookingId: string } | undefined;
+  TestActivity: {
+    initialTab?: 'upcoming' | 'completed' | 'pending' | 'missed';
+  };
+  TestDetails: {
+    patientId: string;
+    filter: 'upcoming' | 'completed' | 'pending' | 'missed';
+  };
+  Reports: undefined;
+  Oxymeter:
+    | {
+        /** Backend device id (uuid) used to map to supported integrations. */
+        deviceId?: string | null;
+        /** Backend device name / displayed name used for fallback error message. */
+        deviceName?: string | null;
+      }
+    | undefined;
+  ScaleDevice: undefined;
 };

@@ -19,15 +19,27 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import PrimaryButton from '../../Components/Button/PrimaryButton';
 import { COLORS, FONT_SIZE, SPACING } from '../../Constants/theme';
 import { RootStackParamList } from '../../navigation/types';
-import {
-  getBackgroundImageS3Url,
-  LOGIN_SCREEN_ILLUSTRATION_IMAGE_ID,
-  sendLoginOtp,
-} from '../../Services/authService';
+import axiosInstance from '../../api/axiosInstance';
+import { sendLoginOtp } from '../../Services/authService';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 type LoginNavProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
+type BackgroundImageItem = {
+  id: number;
+  title: string;
+  s3_url?: string | null;
+  is_active?: boolean;
+  is_deleted?: boolean;
+};
+
+type BackgroundImagesResponse = {
+  success?: boolean;
+  data?: BackgroundImageItem[];
+};
+
 const PHONE_LENGTH = 10;
+const BACK_ICON_SIZE = 28;
 
 const LoginScreen: React.FC = () => {
   const navigation = useNavigation<LoginNavProp>();
@@ -40,10 +52,23 @@ const LoginScreen: React.FC = () => {
     let mounted = true;
     (async () => {
       try {
-        const url = await getBackgroundImageS3Url(LOGIN_SCREEN_ILLUSTRATION_IMAGE_ID);
-        if (mounted && url) {
+        const res = await axiosInstance.get<BackgroundImagesResponse>('background-images');
+        const list = res.data?.data;
+        if (!Array.isArray(list) || !mounted) {
+          return;
+        }
+        const entry = list.find(
+          item =>
+            item.title === 'welcome' &&
+            item.is_active !== false &&
+            item.is_deleted !== true,
+        );
+        const url = entry?.s3_url?.trim();
+        if (url && mounted) {
           setHeroUrl(url);
         }
+      } catch {
+        // keep empty hero / placeholder
       } finally {
         if (mounted) {
           setHeroLoading(false);
@@ -90,54 +115,60 @@ const LoginScreen: React.FC = () => {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.backBtn}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-          >
-            <Text style={styles.backArrow}>←</Text>
-          </TouchableOpacity>
+          <View style={styles.scrollInner}>
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={styles.iconBtn}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Ionicons name="arrow-back" size={BACK_ICON_SIZE} color={COLORS.TEXT_PRIMARY} />
+            </TouchableOpacity>
 
-          <Text style={styles.title}>Welcome Back!</Text>
-          <Text style={styles.subtitle}>
-            Login to manage patients, perform tests, and track your earnings
-          </Text>
+            <Text style={styles.title}>Welcome Back!</Text>
+            <Text style={styles.subtitle}>
+              Login to manage patients, perform tests, and track your earnings
+            </Text>
 
-          <View style={styles.heroWrap}>
-            {heroUrl ? (
-              <Image source={{ uri: heroUrl }} style={styles.heroImage} resizeMode="contain" />
-            ) : heroLoading ? (
-              <ActivityIndicator size="large" color={COLORS.PRIMARY} />
-            ) : (
-              <View style={styles.heroPlaceholder} />
-            )}
+            <View style={styles.heroWrap}>
+              {heroUrl ? (
+                <Image source={{ uri: heroUrl }} style={styles.heroImage} resizeMode="contain" />
+              ) : heroLoading ? (
+                <ActivityIndicator size="large" color={COLORS.PRIMARY} />
+              ) : (
+                <View style={styles.heroPlaceholder} />
+              )}
+            </View>
+
+            <View style={styles.bottomSpacer} />
+
+            <View style={styles.formSection}>
+              <Text style={styles.label}>Phone Number</Text>
+              <View style={styles.phoneRow}>
+                <Text style={styles.prefix}>+91</Text>
+                <View style={styles.prefixDivider} />
+                <TextInput
+                  style={styles.phoneInput}
+                  value={phoneDigits}
+                  onChangeText={onChangePhone}
+                  placeholder="00000 - 00000"
+                  placeholderTextColor={COLORS.PLACEHOLDER}
+                  keyboardType="number-pad"
+                  maxLength={PHONE_LENGTH}
+                  textContentType="telephoneNumber"
+                  autoComplete="tel"
+                />
+              </View>
+
+              <PrimaryButton
+                title="Continue"
+                onPress={handleContinue}
+                loading={submitting}
+                disabled={phoneDigits.length !== PHONE_LENGTH}
+              />
+            </View>
           </View>
-
-          <Text style={styles.label}>Phone Number</Text>
-          <View style={styles.phoneRow}>
-            <Text style={styles.prefix}>+91</Text>
-            <View style={styles.prefixDivider} />
-            <TextInput
-              style={styles.phoneInput}
-              value={phoneDigits}
-              onChangeText={onChangePhone}
-              placeholder="00000 00000"
-              placeholderTextColor={COLORS.PLACEHOLDER}
-              keyboardType="number-pad"
-              maxLength={PHONE_LENGTH}
-              textContentType="telephoneNumber"
-              autoComplete="tel"
-            />
-          </View>
-
-          <PrimaryButton
-            title="Continue"
-            onPress={handleContinue}
-            loading={submitting}
-            disabled={phoneDigits.length !== PHONE_LENGTH}
-          />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -157,17 +188,25 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: SPACING.LG,
-    paddingBottom: SPACING.XL,
+    paddingBottom: SPACING.LG,
   },
-  backBtn: {
+  scrollInner: {
+    flexGrow: 1,
+    width: '100%',
+  },
+  bottomSpacer: {
+    flexGrow: 1,
+    minHeight: 12,
+  },
+  formSection: {
+    width: '100%',
+    alignSelf: 'stretch',
+    paddingBottom: SPACING.SM,
+  },
+  iconBtn: {
     alignSelf: 'flex-start',
     paddingVertical: SPACING.SM,
     marginBottom: SPACING.MD,
-  },
-  backArrow: {
-    fontSize: 28,
-    color: COLORS.TEXT_PRIMARY,
-    fontWeight: '300',
   },
   title: {
     fontSize: FONT_SIZE.XXL,
@@ -185,19 +224,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.SM,
   },
   heroWrap: {
-    minHeight: 220,
-    maxHeight: 320,
-    marginVertical: SPACING.MD,
+    minHeight: 248,
+    maxHeight: 360,
+    marginTop: SPACING.SM,
+    marginBottom: SPACING.SM,
     justifyContent: 'center',
     alignItems: 'center',
   },
   heroImage: {
     width: '100%',
-    height: 280,
+    height: 312,
   },
   heroPlaceholder: {
     width: '100%',
-    height: 200,
+    height: 228,
     borderRadius: 16,
     backgroundColor: '#F0F2F8',
   },
@@ -206,7 +246,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.TEXT_PRIMARY,
     marginBottom: SPACING.SM,
-    marginTop: SPACING.SM,
+    alignSelf: 'flex-start',
   },
   phoneRow: {
     flexDirection: 'row',
@@ -218,6 +258,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     minHeight: 52,
     marginBottom: SPACING.LG,
+    alignSelf: 'stretch',
   },
   prefix: {
     fontSize: FONT_SIZE.LG,

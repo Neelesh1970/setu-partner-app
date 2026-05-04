@@ -1,6 +1,5 @@
-import axiosInstance, { BASE_URL } from '../api/axiosInstance';
+import axiosInstance, { BASE_URL, registerAxiosInstance, REGISTER_BASE_URL } from '../api/axiosInstance';
 import type { IdProofTypeApi, PickedFile } from './identityVerificationTypes';
-
 export type { IdProofTypeApi, PickedFile } from './identityVerificationTypes';
 
 export interface RegisterPayload {
@@ -49,6 +48,7 @@ export interface VerifiedUser {
   role: string;
   gender: string;
   age: number;
+  primary_center_id?: string | null;
   deleted_at?: string | null;
   created_at: string;
   updated_at: string;
@@ -68,11 +68,34 @@ export interface VerifyOtpResponse {
   refreshToken: string;
 }
 
+// export const sendRegistrationOtp = async (
+//   payload: RegisterPayload,
+// ): Promise<SendOtpResponse> => {
+//   const { data } = await axiosInstance.post<SendOtpResponse>(
+//     '/auth/register/send-otp',
+//     payload,
+//   );
+//   return data;
+// };
+
+
 export const sendRegistrationOtp = async (
   payload: RegisterPayload,
 ): Promise<SendOtpResponse> => {
-  const { data } = await axiosInstance.post<SendOtpResponse>(
-    '/auth/register/send-otp',
+  const { data } = await registerAxiosInstance.post<SendOtpResponse>(
+    '/register/send-otp',
+    payload,
+  );
+  return data;
+};
+
+// for register new user in app
+export const verifySmartpingOtp = async (payload: {
+  mobile: string;
+  otp: string;
+}) => {
+  const { data } = await axiosInstance.post(
+    '/auth/loginWithSmartpingOtp',
     payload,
   );
   return data;
@@ -81,7 +104,7 @@ export const sendRegistrationOtp = async (
 export const verifyRegistrationOtp = async (
   payload: VerifyOtpPayload,
 ): Promise<VerifyOtpResponse> => {
-  const { data } = await axiosInstance.post<VerifyOtpResponse>(
+  const { data } = await registerAxiosInstance.post<VerifyOtpResponse>(
     '/auth/register/verify-otp',
     payload,
   );
@@ -146,6 +169,37 @@ export const verifyPatientOtp = async (
   return data;
 };
 
+export const sendNewUserOtp = async (mobile: string): Promise<any> => {
+  const { data } = await registerAxiosInstance.post('/register/send-otp', {
+    mobile,
+    receiveUpdates: true,
+  });
+  return data;
+};
+
+export const sendExistingUserOtpRegFlow = async (mobile: string): Promise<any> => {
+  const { data } = await axiosInstance.post('/auth/otp/send', { mobile });
+  return data;
+};
+
+export const verifyRegistrationOtpRegFlow = async (payload: {
+  mobile: string;
+  otp: string;
+}): Promise<any> => {
+  const { data } = await registerAxiosInstance.post('/register/verify-otp', payload);
+  return data;
+};
+
+export const resendNewUserOtpRegFlow = async (mobile: string): Promise<any> => {
+  const { data } = await registerAxiosInstance.post('/auth/register/resend-otp', { mobile });
+  return data;
+};
+
+export const resendExistingUserOtpRegFlow = async (mobile: string): Promise<any> => {
+  const { data } = await axiosInstance.post('/auth/otp/resend', { mobile });
+  return data;
+};
+
 export const sendLoginOtp = async (mobile: string): Promise<AuthOtpSendResponse> => {
   const { data } = await axiosInstance.post<AuthOtpSendResponse>('/auth/otp/send', {
     mobile,
@@ -153,20 +207,252 @@ export const sendLoginOtp = async (mobile: string): Promise<AuthOtpSendResponse>
   return data;
 };
 
+/**
+ * POST /api/v1/auth/otp/verify — normalizes token fields whether the API returns them
+ * at the top level or under `data` (and refresh_token vs refreshToken).
+ */
+function parseLoginVerifyOtpResponse(raw: unknown): VerifyOtpResponse {
+  if (raw == null || typeof raw !== 'object') {
+    throw new Error('verify-otp: invalid response body');
+  }
+  const r = raw as Record<string, unknown>;
+  const inner = r.data != null && typeof r.data === 'object' ? (r.data as Record<string, unknown>) : null;
+
+  const token =
+    typeof r.token === 'string'
+      ? r.token
+      : inner && typeof inner.token === 'string'
+        ? inner.token
+        : '';
+  const refreshToken =
+    typeof r.refreshToken === 'string'
+      ? r.refreshToken
+      : typeof r.refresh_token === 'string'
+        ? r.refresh_token
+        : inner && typeof inner.refreshToken === 'string'
+          ? inner.refreshToken
+          : inner && typeof inner.refresh_token === 'string'
+            ? inner.refresh_token
+            : '';
+
+  const userRaw =
+    (r.user != null && typeof r.user === 'object' ? r.user : null) ??
+    (inner?.user != null && typeof inner.user === 'object' ? inner.user : null);
+
+  const providerRaw =
+    (r.provider != null && typeof r.provider === 'object' ? r.provider : null) ??
+    (inner?.provider != null && typeof inner.provider === 'object' ? inner.provider : null);
+
+  const defaultProvider: VerifyOtpResponse['provider'] = {
+    sms: '',
+    description: '',
+    transactionId: '',
+    statusCode: 0,
+  };
+
+  return {
+    success: typeof r.success === 'boolean' ? r.success : true,
+    message: typeof r.message === 'string' ? r.message : '',
+    provider: (providerRaw as VerifyOtpResponse['provider']) ?? defaultProvider,
+    user: userRaw as VerifiedUser,
+    token,
+    refreshToken,
+  };
+}
+
 export const verifyLoginOtp = async (
   payload: VerifyOtpPayload,
 ): Promise<VerifyOtpResponse> => {
-  const { data } = await axiosInstance.post<VerifyOtpResponse>(
-    '/auth/otp/verify',
-    payload,
+  const { data } = await axiosInstance.post<unknown>('/auth/otp/verify', payload);
+  const parsed = parseLoginVerifyOtpResponse(data);
+  console.log(
+    'Labworker information',
+    JSON.stringify(
+      {
+        success: parsed.success,
+        message: parsed.message,
+        provider: parsed.provider,
+        user: parsed.user,
+        token: parsed.token,
+        refreshToken: parsed.refreshToken,
+      },
+      null,
+      2,
+    ),
   );
-  return data;
+  return parsed;
 };
 
 export const resendLoginOtp = async (mobile: string): Promise<AuthOtpSendResponse> => {
   const { data } = await axiosInstance.post<AuthOtpSendResponse>('/auth/otp/send', {
     mobile,
   });
+  return data;
+};
+
+export const resendExistingUserOtp = async (mobile: string): Promise<any> => {
+  const { data } = await axiosInstance.post('/auth/otp/resend', { mobile });
+  return data;
+};
+
+export interface CreateOrderPayload {
+  firstName: string;
+  lastName: string;
+  phoneNumber: string;
+}
+
+export interface CreateOrderResponse {
+  success: boolean;
+  message: string;
+  keyId?: string;
+  order?: {
+    id: string;
+    amount: number;
+    currency?: string;
+    [key: string]: any;
+  };
+}
+
+// export const createRegistrationOrder = async (
+//   payload: CreateOrderPayload,
+// ): Promise<CreateOrderResponse> => {
+//   const { data } = await registerAxiosInstance.post<CreateOrderResponse>(
+//     '/register/create-order',
+//     payload,
+//   );
+//   return data;
+// };
+
+
+export const createRegistrationOrder = async (payload: CreateOrderPayload) => {
+  console.log('🟡 [STEP 1] createRegistrationOrder CALLED');
+  console.log('➡️ PAYLOAD:', JSON.stringify(payload, null, 2));
+
+  try {
+    const { data } = await registerAxiosInstance.post(
+      '/register/create-order',
+      payload,
+    );
+
+    console.log('🟢 [STEP 2] ORDER CREATED SUCCESS');
+    console.log('➡️ RESPONSE:', JSON.stringify(data, null, 2));
+
+    return data;
+  } catch (error: any) {
+    console.log('🔴 [STEP 2 ERROR] ORDER CREATION FAILED');
+    console.log('➡️ MESSAGE:', error?.message);
+    console.log('➡️ RESPONSE:', JSON.stringify(error?.response?.data, null, 2));
+    throw error;
+  }
+};
+
+export interface ConfirmRegistrationPayload {
+  firstName: string;
+  lastName: string;
+  phoneNumber: string;
+  dob: string;
+  gender: string;
+  email: string;
+  username: string;
+  password: string;
+  confirmPassword: string;
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+  lab_user_id?: string;
+}
+
+export interface ConfirmRegistrationResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    hasError: boolean;
+    response?: {
+      token?: string;
+      refreshToken?: string;
+      user?: {
+        user_id: number | string;
+        [key: string]: any;
+      };
+      [key: string]: any;
+    };
+  };
+}
+
+export const confirmRegistration = async (
+  payload: ConfirmRegistrationPayload,
+): Promise<ConfirmRegistrationResponse> => {
+  const { data } = await registerAxiosInstance.post<ConfirmRegistrationResponse>(
+    '/register/confirm',
+    payload,
+  );
+  return data;
+};
+
+export interface AutopayInitPayload {
+  firstName: string;
+  lastName: string;
+  phoneNumber: string;
+  dob: string;
+  gender: string;
+}
+
+export interface AutopayInitResponse {
+  success: boolean;
+  message: string;
+  checkoutPayload?: {
+    subscriptionId: string;
+    customerId: string;
+    keyId: string;
+    [key: string]: any;
+  };
+}
+
+export const initAutopay5 = async (
+  payload: AutopayInitPayload,
+): Promise<AutopayInitResponse> => {
+  const { data } = await registerAxiosInstance.post<AutopayInitResponse>(
+    '/register/autopay-5/init',
+    payload,
+  );
+  return data;
+};
+
+export interface AutopayConfirmPayload {
+  firstName: string;
+  lastName: string;
+  phoneNumber: string;
+  dob: string;
+  gender: string;
+  customerId: string;
+  razorpay_subscription_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+  razorpay_order_id?: string;
+  lab_user_id?: string;
+}
+
+export interface AutopayConfirmResponse {
+  success: boolean;
+  state?: string;
+  message: string;
+  token?: string;
+  refreshToken?: string;
+  user?: {
+    user_id: number | string;
+    [key: string]: any;
+  };
+  subscription?: { [key: string]: any };
+  details?: { [key: string]: any };
+}
+
+export const confirmAutopay5 = async (
+  payload: AutopayConfirmPayload,
+): Promise<AutopayConfirmResponse> => {
+  const { data } = await registerAxiosInstance.post<AutopayConfirmResponse>(
+    '/register/autopay-5/confirm',
+    payload,
+  );
   return data;
 };
 
