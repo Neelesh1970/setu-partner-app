@@ -19,6 +19,7 @@ import {
   resendRegistrationOtp,
   verifyLoginOtp,
   resendLoginOtp,
+  getIdentityVerificationStatus,
 } from '../../Services/authService';
 import { saveAuthTokens, saveUser, saveLabUserId, saveUserID } from '../../Utils/storage';
 import { useAppDispatch } from '../../store/hooks';
@@ -29,6 +30,14 @@ type OtpNavProp = NativeStackNavigationProp<RootStackParamList, 'OtpVerification
 type OtpRouteProp = RouteProp<RootStackParamList, 'OtpVerification'>;
 
 const OTP_LENGTH = 6;
+const isApprovedVerification = (payload: any): boolean => {
+  const status = String(payload?.verification_status ?? '').toUpperCase();
+  return status === 'APPROVED' || payload?.is_approved === true;
+};
+
+const hasPendingVerification = (payload: any): boolean => {
+  return !!payload && !isApprovedVerification(payload);
+};
 
 const OtpVerificationScreen: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -109,11 +118,24 @@ const OtpVerificationScreen: React.FC = () => {
       );
 
       if (authFlow === 'login') {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'Home' }],
-        });
+        // Login flow: IdentityVerification is NOT part of login.
+        // Route based on verification status; fall back to Home on any error.
+        try {
+          const verification = await getIdentityVerificationStatus();
+          if (isApprovedVerification(verification?.data)) {
+            navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+          } else if (hasPendingVerification(verification?.data)) {
+            navigation.reset({ index: 0, routes: [{ name: 'VerificationPending' }] });
+          } else {
+            navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+          }
+        } catch (statusError) {
+          console.log('[OtpVerificationScreen] verification-status check error:', statusError);
+          navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+        }
+        return;
       } else {
+        // Register flow: always go to identity verification to upload documents.
         navigation.navigate('IdentityVerification');
       }
     } catch (error: any) {

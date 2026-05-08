@@ -8,21 +8,21 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
-  Image,
-  Platform,
-  Modal,
+  StatusBar,
+  RefreshControl,
+  TouchableWithoutFeedback,
 } from 'react-native';
-import { BlurView } from '@react-native-community/blur';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { pick, types, isErrorWithCode, errorCodes, DocumentPickerResponse } from '@react-native-documents/picker';
-import ScreenHeader from '../../Components/ScreenHeader/ScreenHeader';
+import PreventiveHealthHeader from '../Home/PreventiveUser/PreventiveHealthHeader';
 import { RootStackParamList } from '../../navigation/types';
 import type { PickedFile, IdProofTypeApi } from '../../Services/identityVerificationTypes';
 import {
   submitIdentityVerification,
-  getBackgroundImageS3Url,
-  IDENTITY_VERIFICATION_MODAL_IMAGE_ID,
+  getIdentityVerificationStatus,
 } from '../../Services/authService';
 
 type IdentityNavProp = NativeStackNavigationProp<
@@ -41,50 +41,58 @@ const ID_PROOF_OPTIONS: ReadonlyArray<{ label: string; apiValue: IdProofTypeApi 
 const IdentityVerificationScreen: React.FC = () => {
   const navigation = useNavigation<IdentityNavProp>();
 
-  // --- Form States ---
   const [idProofType, setIdProofType] = useState<IdProofTypeApi | ''>('');
   const [idNumber, setIdNumber] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [idProofFile, setIdProofFile] = useState<PickedFile | null>(null);
+  const [labCertificateFile, setLabCertificateFile] = useState<PickedFile | null>(null);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [headerChecking, setHeaderChecking] = useState(false);
 
-  // --- Modal & API States ---
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [modalImageUrl, setModalImageUrl] = useState<string | null>(null);
-  const [modalImageLoading, setModalImageLoading] = useState(false);
-
-  const loadModalIllustration = async () => {
-    setModalImageLoading(true);
+  // Shared status check: navigate to Home if APPROVED, to VerificationPending if pending record exists.
+  const checkStatusForRedirect = useCallback(async () => {
     try {
-      const url = await getBackgroundImageS3Url(IDENTITY_VERIFICATION_MODAL_IMAGE_ID);
-      if (url) {
-        setModalImageUrl(url);
+      const statusRes = await getIdentityVerificationStatus();
+      const status = String(statusRes?.data?.verification_status ?? '').toUpperCase();
+      if (status === 'APPROVED' || statusRes?.data?.is_approved === true) {
+        navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+      } else if (statusRes?.data) {
+        navigation.reset({ index: 0, routes: [{ name: 'VerificationPending' }] });
       }
-    } catch {
-      // Presigned URL is optional for closing the flow; modal still shows copy.
-    } finally {
-      setModalImageLoading(false);
+    } catch (e) {
+      console.log('[IdentityVerificationScreen] status-check error:', e);
     }
-  };
-
-  useEffect(() => {
-    loadModalIllustration();
-  }, []);
-
-  useEffect(() => {
-    if (!showSuccessModal || modalImageUrl) {
-      return;
-    }
-    void loadModalIllustration();
-  }, [showSuccessModal, modalImageUrl]);
-
-  const handleModalClose = useCallback(() => {
-    setShowSuccessModal(false);
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'Home' }],
-    });
   }, [navigation]);
+
+  useEffect(() => {
+    void checkStatusForRedirect();
+  }, [checkStatusForRedirect]);
+
+  const onPullToRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await checkStatusForRedirect();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [checkStatusForRedirect]);
+
+  const onHeaderRefresh = useCallback(async () => {
+    if (headerChecking) {return;}
+    setHeaderChecking(true);
+    try {
+      const statusRes = await getIdentityVerificationStatus();
+      const status = String(statusRes?.data?.verification_status ?? '').toUpperCase();
+      if (status === 'APPROVED' || statusRes?.data?.is_approved === true) {
+        navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+      }
+    } catch (e) {
+      console.log('[IdentityVerificationScreen] header refresh error:', e);
+    } finally {
+      setHeaderChecking(false);
+    }
+  }, [headerChecking, navigation]);
 
   const pickIdDocument = async () => {
     try {
@@ -98,6 +106,30 @@ const IdentityVerificationScreen: React.FC = () => {
         return;
       }
       setIdProofFile({
+        uri: file.uri,
+        name: file.name ?? 'document',
+        type: file.type ?? 'application/octet-stream',
+      });
+    } catch (err) {
+      if (isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED) {
+        return;
+      }
+      Alert.alert('Error', 'Failed to pick document. Please try again.');
+    }
+  };
+
+  const pickLabCertificate = async () => {
+    try {
+      const result: DocumentPickerResponse[] = await pick({
+        type: [types.images, types.pdf],
+        allowMultiSelection: false,
+      });
+      const file = result[0];
+      if (file.size != null && file.size > DOCUMENT_MAX_BYTES) {
+        Alert.alert('File too large', 'Please choose a file under 5 MB.');
+        return;
+      }
+      setLabCertificateFile({
         uri: file.uri,
         name: file.name ?? 'document',
         type: file.type ?? 'application/octet-stream',
@@ -126,18 +158,21 @@ const IdentityVerificationScreen: React.FC = () => {
         id_proof_type: idProofType,
         id_number: idNumber.trim(),
         document: idProofFile,
+        technician_certificate: labCertificateFile ?? undefined,
       });
 
-      console.log('[IdentityVerificationScreen] response:', response);
-      
-      // SUCCESS: Instead of navigating, show the Modal
+      console.log('[IdentityVerificationScreen] submit response:', response);
+
       if (response.success) {
-        setShowSuccessModal(true);
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'VerificationPending' }],
+        });
       } else {
         Alert.alert('Error', response.message || 'Submission failed');
       }
     } catch (error: any) {
-      console.log('[IdentityVerificationScreen] error:', error);
+      console.log('[IdentityVerificationScreen] submit error:', error);
       Alert.alert('Error', error?.message ?? 'Submission failed. Please try again.');
     } finally {
       setLoading(false);
@@ -145,145 +180,119 @@ const IdentityVerificationScreen: React.FC = () => {
   };
 
   return (
-    <View style={styles.container}>
-      <ScreenHeader title="Identity Verification" />
-
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        <Text style={styles.description}>
-          This helps us assign nearby patients and test requests.
-        </Text>
-
-        <Text style={styles.label}>ID Proof Type</Text>
-        <TouchableOpacity
-          style={styles.dropdown}
-          onPress={() => setShowDropdown(prev => !prev)}
-          activeOpacity={0.7}
-        >
-          <Text style={idProofType ? styles.inputText : styles.placeholder}>
-            {ID_PROOF_OPTIONS.find(o => o.apiValue === idProofType)?.label ?? 'Select'}
-          </Text>
-          <Text style={styles.dropdownIcon}>{showDropdown ? '▲' : '▼'}</Text>
-        </TouchableOpacity>
-        
-        {showDropdown && (
-          <View style={styles.dropdownMenu}>
-            {ID_PROOF_OPTIONS.map(option => (
-              <TouchableOpacity
-                key={option.apiValue}
-                style={[
-                  styles.dropdownOption,
-                  idProofType === option.apiValue && styles.dropdownOptionSelected,
-                ]}
-                onPress={() => {
-                  setIdProofType(option.apiValue);
-                  setShowDropdown(false);
-                }}
-              >
-                <Text
-                  style={[
-                    styles.dropdownOptionText,
-                    idProofType === option.apiValue && styles.dropdownOptionTextSelected,
-                  ]}
-                >
-                  {option.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
-        <Text style={styles.label}>ID Number</Text>
-        <TextInput
-          style={styles.input}
-          value={idNumber}
-          onChangeText={setIdNumber}
-          placeholder="Enter ID number"
-          placeholderTextColor="#A0A0A0"
-        />
-
-        <UploadCard
-          title="Upload ID Proof"
-          uploadedFile={idProofFile}
-          onUpload={pickIdDocument}
-        />
-
-        <TouchableOpacity
-          style={[styles.primaryButton, loading && styles.primaryButtonDisabled]}
-          onPress={handleContinue}
-          disabled={loading}
-          activeOpacity={0.8}
-        >
-          {loading ? (
-            <ActivityIndicator color="#FFF" />
-          ) : (
-            <Text style={styles.buttonText}>Continue</Text>
-          )}
-        </TouchableOpacity>
-      </ScrollView>
-
-      <Modal
-        visible={showSuccessModal}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        presentationStyle="overFullScreen"
-        onRequestClose={handleModalClose}
-      >
-        <View style={styles.modalBackdropRoot}>
-          <BlurView
-            style={StyleSheet.absoluteFill}
-            blurType="dark"
-            blurAmount={Platform.OS === 'ios' ? 16 : 24}
-            reducedTransparencyFallbackColor="rgba(30, 30, 35, 0.92)"
-            {...Platform.select({
-              android: {
-                blurRadius: 18,
-                overlayColor: 'transparent',
-              },
-              default: {},
-            })}
-          />
-          <View style={styles.modalBackdropTint} pointerEvents="none" />
-          <View style={styles.modalForeground}>
-            <View style={styles.modalCard}>
-              <TouchableOpacity
-                style={styles.modalCloseBtn}
-                onPress={handleModalClose}
-                accessibilityRole="button"
-                accessibilityLabel="Close"
-              >
-                <Text style={styles.closeIconText}>✕</Text>
-              </TouchableOpacity>
-
-              <View style={styles.modalImageWrapper}>
-                {modalImageUrl ? (
-                  <Image
-                    source={{ uri: modalImageUrl }}
-                    style={styles.statusImage}
-                    resizeMode="contain"
-                  />
-                ) : modalImageLoading ? (
-                  <ActivityIndicator color="#1A49AB" size="large" />
+    <>
+      <StatusBar barStyle="light-content" backgroundColor="#1C39BB" />
+      <SafeAreaView style={styles.headerSafe}>
+        <PreventiveHealthHeader
+          title="Identity Verification"
+          rightSlot={
+            <TouchableWithoutFeedback onPress={onHeaderRefresh} hitSlop={10}>
+              <View style={styles.headerIconBtn}>
+                {headerChecking ? (
+                  <ActivityIndicator color="#FFF" size="small" />
                 ) : (
-                  <View style={styles.modalImagePlaceholder} />
+                  <Ionicons name="refresh-outline" size={24} color="#FFF" />
                 )}
               </View>
+            </TouchableWithoutFeedback>
+          }
+        />
+      </SafeAreaView>
 
-              <Text style={styles.modalTitle}>Verification in Progress</Text>
-              <Text style={styles.modalSubText}>
-                Your profile is under review. You will be notified within 24–48 hours after
-                verification.
-              </Text>
+      <SafeAreaView style={styles.container}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onPullToRefresh}
+              colors={['#1A49AB']}
+              tintColor="#1A49AB"
+            />
+          }
+        >
+          <Text style={styles.description}>
+            This helps us assign nearby patients and test{'\n'}requests.
+          </Text>
+
+          <Text style={styles.label}>ID Proof Type</Text>
+          <TouchableOpacity
+            style={styles.dropdown}
+            onPress={() => setShowDropdown(prev => !prev)}
+            activeOpacity={0.7}
+          >
+            <Text style={idProofType ? styles.inputText : styles.placeholder}>
+              {ID_PROOF_OPTIONS.find(o => o.apiValue === idProofType)?.label ?? 'Select'}
+            </Text>
+            <Text style={styles.dropdownIcon}>⌄</Text>
+          </TouchableOpacity>
+
+          {showDropdown && (
+            <View style={styles.dropdownMenu}>
+              {ID_PROOF_OPTIONS.map(option => (
+                <TouchableOpacity
+                  key={option.apiValue}
+                  style={[
+                    styles.dropdownOption,
+                    idProofType === option.apiValue && styles.dropdownOptionSelected,
+                  ]}
+                  onPress={() => {
+                    setIdProofType(option.apiValue);
+                    setShowDropdown(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.dropdownOptionText,
+                      idProofType === option.apiValue && styles.dropdownOptionTextSelected,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
-          </View>
-        </View>
-      </Modal>
-    </View>
+          )}
+
+          <Text style={styles.label}>ID Number</Text>
+          <TextInput
+            style={styles.input}
+            value={idNumber}
+            onChangeText={setIdNumber}
+            placeholder="Enter ID number"
+            placeholderTextColor="#A0A0A0"
+          />
+
+          <UploadCard
+            title="Upload ID Proof"
+            uploadedFile={idProofFile}
+            onUpload={pickIdDocument}
+          />
+
+          <UploadCard
+            title="Upload Lab Technician Certificate"
+            uploadedFile={labCertificateFile}
+            onUpload={pickLabCertificate}
+          />
+
+          <TouchableOpacity
+            style={[styles.primaryButton, loading && styles.primaryButtonDisabled]}
+            onPress={handleContinue}
+            disabled={loading}
+            activeOpacity={0.8}
+          >
+            {loading ? (
+              <ActivityIndicator color="#FFF" />
+            ) : (
+              <Text style={styles.buttonText}>Continue</Text>
+            )}
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+    </>
   );
 };
 
@@ -299,8 +308,11 @@ const UploadCard: React.FC<UploadCardProps> = ({ title, uploadedFile, onUpload }
   <View style={styles.uploadSection}>
     <Text style={styles.label}>{title}</Text>
     <View style={styles.uploadBox}>
-      <View style={styles.cloudCircle}>
-        <Text style={styles.upArrow}>↑</Text>
+      <View style={styles.uploadIconStack}>
+        <View style={styles.cloudBackdrop} />
+        <View style={styles.cloudCircle}>
+          <Text style={styles.upArrow}>↑</Text>
+        </View>
       </View>
 
       {uploadedFile ? (
@@ -327,6 +339,12 @@ const UploadCard: React.FC<UploadCardProps> = ({ title, uploadedFile, onUpload }
 );
 
 const styles = StyleSheet.create({
+  headerSafe: {
+    backgroundColor: '#1C39BB',
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    overflow: 'hidden',
+  },
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
@@ -336,37 +354,37 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
-    paddingBottom: 40,
+    paddingBottom: 28,
   },
   description: {
     fontSize: 14,
     color: '#333',
     lineHeight: 20,
-    marginBottom: 20,
-    fontWeight: '500',
+    marginBottom: 14,
+    fontWeight: '400',
   },
   label: {
     fontSize: 14,
     fontWeight: '700',
     color: '#000',
     marginBottom: 8,
-    marginTop: 10,
+    marginTop: 14,
   },
   dropdown: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E0E0E0',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    backgroundColor: '#FAFAFA',
+    borderColor: '#E4E4E4',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    backgroundColor: '#FFFFFF',
   },
   dropdownMenu: {
     borderWidth: 1,
-    borderColor: '#E0E0E0',
-    borderRadius: 10,
+    borderColor: '#E4E4E4',
+    borderRadius: 8,
     backgroundColor: '#FFF',
     marginTop: 2,
     marginBottom: 8,
@@ -405,41 +423,54 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: '#E0E0E0',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    marginBottom: 8,
+    borderColor: '#E4E4E4',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    marginBottom: 10,
     fontSize: 14,
     color: '#000',
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#FFFFFF',
   },
   uploadSection: {
-    marginBottom: 16,
+    marginBottom: 12,
   },
   uploadBox: {
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: '#EAEAEA',
     borderRadius: 12,
-    paddingVertical: 25,
+    paddingVertical: 22,
     alignItems: 'center',
     backgroundColor: '#FFF',
   },
-  cloudCircle: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#E8F0FE',
+  uploadIconStack: {
+    width: 96,
+    height: 72,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#1A49AB',
     marginBottom: 10,
   },
+  cloudBackdrop: {
+    position: 'absolute',
+    width: 96,
+    height: 72,
+    borderRadius: 16,
+    backgroundColor: '#EEF4FF',
+    opacity: 0.9,
+    transform: [{ scaleX: 0.92 }, { scaleY: 0.82 }],
+  },
+  cloudCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#1A49AB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   upArrow: {
-    fontSize: 20,
-    color: '#1A49AB',
-    fontWeight: 'bold',
+    fontSize: 18,
+    color: '#FFFFFF',
+    fontWeight: '800',
   },
   uploadMainText: {
     fontSize: 15,
@@ -464,10 +495,10 @@ const styles = StyleSheet.create({
   },
   uploadButton: {
     backgroundColor: '#1A49AB',
-    borderRadius: 20,
-    paddingHorizontal: 35,
-    paddingVertical: 8,
-    marginTop: 15,
+    borderRadius: 22,
+    paddingHorizontal: 40,
+    paddingVertical: 10,
+    marginTop: 12,
   },
   uploadButtonText: {
     color: '#FFF',
@@ -479,7 +510,7 @@ const styles = StyleSheet.create({
     borderRadius: 50,
     padding: 16,
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: 16,
   },
   primaryButtonDisabled: {
     opacity: 0.6,
@@ -489,93 +520,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 16,
   },
-
-  modalBackdropRoot: {
-    flex: 1,
-  },
-  /** Light dim on top of blur — keeps the popup crisp; blur handles the “frosted” look */
-  modalBackdropTint: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.28)',
-  },
-  modalForeground: {
-    ...StyleSheet.absoluteFillObject,
+  headerIconBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 360,
-    backgroundColor: '#FFF',
-    borderRadius: 28,
-    paddingTop: 28,
-    paddingBottom: 28,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-    position: 'relative',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 12 },
-        shadowOpacity: 0.18,
-        shadowRadius: 24,
-      },
-      android: {
-        elevation: 12,
-      },
-    }),
-  },
-  modalCloseBtn: {
-    position: 'absolute',
-    right: 14,
-    top: 14,
-    zIndex: 2,
-    backgroundColor: '#E8E8E8',
-    borderRadius: 16,
-    width: 32,
-    height: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  closeIconText: {
-    fontSize: 15,
-    color: '#222',
-    fontWeight: '700',
-  },
-  modalImageWrapper: {
-    width: '100%',
-    minHeight: 168,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 8,
-  },
-  statusImage: {
-    width: 200,
-    height: 168,
-  },
-  modalImagePlaceholder: {
-    width: 200,
-    height: 168,
-    backgroundColor: '#F3F5F9',
-    borderRadius: 12,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#000',
-    marginTop: 4,
-    textAlign: 'center',
-    letterSpacing: -0.2,
-  },
-  modalSubText: {
-    fontSize: 15,
-    color: '#333',
-    textAlign: 'center',
-    lineHeight: 22,
-    marginTop: 12,
-    paddingHorizontal: 4,
   },
 });
 

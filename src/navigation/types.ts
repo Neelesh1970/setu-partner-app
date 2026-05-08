@@ -7,6 +7,7 @@ export type RootStackParamList = {
     authFlow?: 'register' | 'login' | 'patientRegister';
   };
   IdentityVerification: undefined;
+  VerificationPending: undefined;
   Home: undefined;
   Profile: undefined;
   MyWallet: undefined;
@@ -77,4 +78,5 @@ export type RootStackParamList = {
       }
     | undefined;
   ScaleDevice: undefined;
+  RemidioQRScanner: undefined;
 };

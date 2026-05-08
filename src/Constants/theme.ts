@@ -22,8 +22,8 @@ export const SPACING = {
 };
 
 export const FONT_SIZE = {
-  SM: 12,
-  MD: 14,
+  SM: 14,
+  MD: 16,
   LG: 16,
   XL: 20,
   XXL: 28,

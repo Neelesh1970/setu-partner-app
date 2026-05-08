@@ -1,4 +1,5 @@
 import axiosInstance, { BASE_URL, registerAxiosInstance, REGISTER_BASE_URL } from '../api/axiosInstance';
+import { getLabUserId, getUserID } from '../Utils/storage';
 import type { IdProofTypeApi, PickedFile } from './identityVerificationTypes';
 export type { IdProofTypeApi, PickedFile } from './identityVerificationTypes';
 
@@ -9,6 +10,28 @@ export interface RegisterPayload {
   gender: string;
   age: number;
   email: string;
+  service_scope?: string;
+  center_id?: string;
+}
+
+export interface Center {
+  id: string;
+  name: string;
+  city: string;
+  district?: string;
+  state?: string;
+  pincode: string;
+  latitude?: string;
+  longitude?: string;
+  open_time?: string;
+  close_time?: string;
+  created_at?: string;
+}
+
+export interface CentersResponse {
+  success: boolean;
+  message: string;
+  data: Center[];
 }
 
 export interface SendOtpResponse {
@@ -68,25 +91,20 @@ export interface VerifyOtpResponse {
   refreshToken: string;
 }
 
-// export const sendRegistrationOtp = async (
-//   payload: RegisterPayload,
-// ): Promise<SendOtpResponse> => {
-//   const { data } = await axiosInstance.post<SendOtpResponse>(
-//     '/auth/register/send-otp',
-//     payload,
-//   );
-//   return data;
-// };
-
-
 export const sendRegistrationOtp = async (
   payload: RegisterPayload,
 ): Promise<SendOtpResponse> => {
-  const { data } = await registerAxiosInstance.post<SendOtpResponse>(
-    '/register/send-otp',
-    payload,
-  );
+  console.log('[authService] sendRegistrationOtp request:', JSON.stringify(payload, null, 2));
+  // NOTE: registration OTP for partner app must use main API base (/api/v1).
+  // `BASE_URL` already includes `/api/v1`, so keep the path API-relative here.
+  const { data } = await axiosInstance.post<SendOtpResponse>('/auth/register/send-otp', payload);
+  console.log('[authService] sendRegistrationOtp response:', JSON.stringify(data, null, 2));
   return data;
+};
+
+export const getCenters = async (): Promise<Center[]> => {
+  const { data } = await axiosInstance.get<CentersResponse>('/centers');
+  return Array.isArray(data?.data) ? data.data : [];
 };
 
 // for register new user in app
@@ -104,7 +122,7 @@ export const verifySmartpingOtp = async (payload: {
 export const verifyRegistrationOtp = async (
   payload: VerifyOtpPayload,
 ): Promise<VerifyOtpResponse> => {
-  const { data } = await registerAxiosInstance.post<VerifyOtpResponse>(
+  const { data } = await axiosInstance.post<VerifyOtpResponse>(
     '/auth/register/verify-otp',
     payload,
   );
@@ -460,6 +478,7 @@ export interface IdentityVerificationPayload {
   id_proof_type: IdProofTypeApi;
   id_number: string;
   document: PickedFile;
+  technician_certificate?: PickedFile;
 }
 
 export type IdentityVerificationStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | string;
@@ -470,7 +489,10 @@ export interface IdentityVerificationRecord {
   id_proof_type: string;
   id_number: string;
   document_url: string;
+  technician_certificate_url?: string;
   verification_status: IdentityVerificationStatus;
+  submitted?: boolean;
+  is_approved?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -480,6 +502,8 @@ export interface IdentityVerificationResponse {
   message: string;
   data?: IdentityVerificationRecord;
 }
+
+const IDENTITY_VERIFICATION_ENDPOINTS = ['/identity-verification', '/lab/identity-verification'] as const;
 
 /**
  * POST /identity-verification
@@ -498,6 +522,13 @@ export const submitIdentityVerification = async (
     name: payload.document.name,
     type: payload.document.type,
   } as any);
+  if (payload.technician_certificate) {
+    formData.append('technician_certificate', {
+      uri: payload.technician_certificate.uri,
+      name: payload.technician_certificate.name,
+      type: payload.technician_certificate.type,
+    } as any);
+  }
 
   console.log('[identity-verification] POST multipart/form-data', {
     url: `${BASE_URL}/identity-verification`,
@@ -516,6 +547,35 @@ export const submitIdentityVerification = async (
     { timeout: 120_000 },
   );
   return data;
+};
+
+/** GET /identity-verification — current lab worker KYC/identity status. */
+export const getIdentityVerificationStatus = async (): Promise<IdentityVerificationResponse> => {
+  let lastError: unknown = null;
+  for (const endpoint of IDENTITY_VERIFICATION_ENDPOINTS) {
+    try {
+      const { data } = await axiosInstance.get<IdentityVerificationResponse>(endpoint);
+      const payload = data as IdentityVerificationResponse & {
+        data?: IdentityVerificationRecord | IdentityVerificationRecord[];
+      };
+      if (Array.isArray(payload.data)) {
+        const [labUserId, userId] = await Promise.all([getLabUserId(), getUserID()]);
+        const currentUserId = labUserId ?? userId ?? null;
+        const matched =
+          (currentUserId
+            ? payload.data.find(record => String(record?.user_id ?? '') === String(currentUserId))
+            : undefined) ?? payload.data[0];
+        return {
+          ...payload,
+          data: matched,
+        };
+      }
+      return payload;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Unable to fetch identity verification status');
 };
 
 /** CMS asset id for the identity verification “in progress” modal illustration. */

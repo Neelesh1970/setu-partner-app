@@ -9,6 +9,7 @@ import LoginScreen from '../Screens/Auth/LoginScreen';
 import RegisterScreen from '../Screens/Auth/RegisterScreen';
 import OtpVerificationScreen from '../Screens/Auth/OtpVerificationScreen';
 import IdentityVerificationScreen from '../Screens/Auth/IdentityVerificationScreen';
+import VerificationPendingScreen from '../Screens/Auth/VerificationPendingScreen';
 import HomeScreen from '../Screens/Home/HomeScreen';
 import Profile from '../Screens/Home/PreventiveUser/Profile';
 import MyWallet from '../Screens/Home/PreventiveUser/MyWallet';
@@ -43,17 +44,33 @@ import TestDetails from '../Screens/Home/PreventiveUser/TestDetails';
 import Reports from '../Screens/Home/PreventiveUser/Reports';
 import Oxymeter from '../Screens/IOT/Oxymeter';
 import { ScaleDeviceScreen } from '../Screens/IOT/ScaleDevice';
+import RemidioQRScanner from '../Screens/IOT/RemidioQRScanner';
 import { getAuthToken, getUser, getUserID } from '../Utils/storage';
 import { navigationRef } from './navigationRef';
 import type { VerifiedUser } from '../Services/authService';
+import { getIdentityVerificationStatus } from '../Services/authService';
 import SplashScreen from '../Screens/Auth/SplashScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+const isApprovedVerification = (payload: any): boolean => {
+  const status = String(payload?.verification_status ?? '').toUpperCase();
+  return status === 'APPROVED' || payload?.is_approved === true;
+};
+
+/**
+ * Returns true when the worker has submitted KYC but it's not yet approved.
+ * A record existing in the response means they have submitted — status value
+ * is irrelevant as long as it is not APPROVED.
+ */
+const hasPendingVerification = (payload: any): boolean => {
+  return !!payload && !isApprovedVerification(payload);
+};
+
 const AppNavigator: React.FC = () => {
   const dispatch = useDispatch();
   const [isLoading, setIsLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [initialRouteName, setInitialRouteName] = useState<keyof RootStackParamList>('Welcome');
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -69,6 +86,21 @@ const AppNavigator: React.FC = () => {
               user: user ?? null,
             }),
           );
+          try {
+            const verification = await getIdentityVerificationStatus();
+            if (isApprovedVerification(verification?.data)) {
+              setInitialRouteName('Home');
+            } else if (hasPendingVerification(verification?.data)) {
+              setInitialRouteName('VerificationPending');
+            } else {
+              // No verification record: user is already authenticated (token exists),
+              // so go to Home. IdentityVerification is only for the register flow.
+              setInitialRouteName('Home');
+            }
+          } catch {
+            // Status check failed: token exists so user is authenticated — go to Home.
+            setInitialRouteName('Home');
+          }
         } else {
           dispatch(
             setSession({
@@ -77,10 +109,10 @@ const AppNavigator: React.FC = () => {
               user: null,
             }),
           );
+          setInitialRouteName('Welcome');
         }
-        setIsAuthenticated(ok);
       } catch {
-        setIsAuthenticated(false);
+        setInitialRouteName('Welcome');
         dispatch(setSession({ isAuthenticated: false, userId: null, user: null }));
       } finally {
         setIsLoading(false);
@@ -97,13 +129,14 @@ const AppNavigator: React.FC = () => {
     <NavigationContainer ref={navigationRef}>
       <Stack.Navigator
         screenOptions={{ headerShown: false }}
-        initialRouteName={isAuthenticated ? 'Home' : 'Welcome'}
+        initialRouteName={initialRouteName}
       >
         <Stack.Screen name="Welcome" component={WelcomeScreen} />
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Register" component={RegisterScreen} />
         <Stack.Screen name="OtpVerification" component={OtpVerificationScreen} />
         <Stack.Screen name="IdentityVerification" component={IdentityVerificationScreen} />
+        <Stack.Screen name="VerificationPending" component={VerificationPendingScreen} />
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="Profile" component={Profile} />
         <Stack.Screen name="MyWallet" component={MyWallet} />
@@ -138,6 +171,7 @@ const AppNavigator: React.FC = () => {
         <Stack.Screen name="Reports" component={Reports} />
         <Stack.Screen name="Oxymeter" component={Oxymeter} />
         <Stack.Screen name="ScaleDevice" component={ScaleDeviceScreen} />
+        <Stack.Screen name="RemidioQRScanner" component={RemidioQRScanner} />
       </Stack.Navigator>
     </NavigationContainer>
   );
