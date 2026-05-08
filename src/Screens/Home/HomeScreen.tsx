@@ -189,6 +189,7 @@ type LabProfileWorkStats = {
 type LabProfilePersonalInfo = {
   full_name?: string | null;
   profile_image_url?: string | null;
+  service_scope?: string | null;
 };
 
 type LabProfileApiResponse = {
@@ -465,6 +466,7 @@ const HomeScreen: React.FC = () => {
   const [walletMetricsLoading, setWalletMetricsLoading] = useState(true);
   const [labProfileName, setLabProfileName] = useState('');
   const [labProfileImageUrl, setLabProfileImageUrl] = useState<string | null>(null);
+  const [labServiceScope, setLabServiceScope] = useState('');
   const [visitTab, setVisitTab] = useState<'home' | 'walkin'>('home');
   const [refreshing, setRefreshing] = useState(false);
   const [homePatientsLoading, setHomePatientsLoading] = useState(true);
@@ -503,20 +505,30 @@ const HomeScreen: React.FC = () => {
       setWalletMetricsLoading(true);
     }
     try {
-      const [summary, profileRes] = await Promise.all([
+      const [summaryResult, profileResult] = await Promise.allSettled([
         getLabWalletSummary(),
         axiosInstance.get<LabProfileApiResponse>('lab/profile'),
       ]);
-      setWalletSummary(summary);
-      const personal = profileRes.data?.data?.personal_info;
-      setWalletWorkStats(profileRes.data?.data?.work_stats ?? null);
-      setLabProfileName(personal?.full_name?.trim() ?? '');
-      setLabProfileImageUrl(personal?.profile_image_url?.trim() ?? null);
+      if (summaryResult.status === 'fulfilled') {
+        setWalletSummary(summaryResult.value);
+      } else {
+        setWalletSummary(null);
+      }
+
+      if (profileResult.status === 'fulfilled') {
+        const personal = profileResult.value.data?.data?.personal_info;
+        setWalletWorkStats(profileResult.value.data?.data?.work_stats ?? null);
+        setLabProfileName(personal?.full_name?.trim() ?? '');
+        setLabProfileImageUrl(personal?.profile_image_url?.trim() ?? null);
+        setLabServiceScope(personal?.service_scope?.trim() ?? '');
+      } else {
+        setWalletWorkStats(null);
+        setLabProfileName('');
+        setLabProfileImageUrl(null);
+        setLabServiceScope('');
+      }
     } catch {
       setWalletSummary(null);
-      setWalletWorkStats(null);
-      setLabProfileName('');
-      setLabProfileImageUrl(null);
     } finally {
       if (showSectionLoading) {
         setWalletMetricsLoading(false);
@@ -756,7 +768,8 @@ const HomeScreen: React.FC = () => {
   }, [navigation]);
 
   const goScaleDevice = useCallback(() => {
-    navigation.navigate('ScaleDevice');
+    // navigation.navigate('ScaleDevice');
+    navigation.navigate('RemidioQRScanner');
   }, [navigation]);
 
   return (
@@ -965,7 +978,7 @@ const HomeScreen: React.FC = () => {
 
 export default HomeScreen;
 
-const RADIUS_LG = 16;
+const RADIUS_LG = 20;
 const RADIUS_MD = 12;
 const RADIUS_PILL = 22;
 
@@ -1004,6 +1017,8 @@ const styles = StyleSheet.create({
   },
   heroImage: {
     borderRadius: RADIUS_LG,
+    resizeMode: 'cover',
+    transform: [{ scale: 1.08 }],
   },
   heroLoading: {
     backgroundColor: COLORS.BACKGROUND,

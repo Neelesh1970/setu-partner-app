@@ -360,18 +360,18 @@ const Profile: React.FC = () => {
       // 3) Close modal
       setLogoutModalVisible(false);
 
-      // 4) Hard reset navigation to Login (no back navigation)
+      // 4) Hard reset navigation to Welcome (no back navigation)
       if (navigationRef.isReady()) {
         navigationRef.dispatch(
           CommonActions.reset({
             index: 0,
-            routes: [{ name: 'Login' }],
+            routes: [{ name: 'Welcome' }],
           }),
         );
       } else {
         navigation.reset({
           index: 0,
-          routes: [{ name: 'Login' }],
+          routes: [{ name: 'Welcome' }],
         });
       }
     } catch (e: any) {
@@ -492,7 +492,7 @@ const Profile: React.FC = () => {
               </TouchableOpacity>
             </View>
             <Text style={styles.profileName}>{name}</Text>
-            <Text style={styles.profileLocation}>{location}</Text>
+            {/* <Text style={styles.profileLocation}>{location}</Text> */}
             {roleLabel ? <Text style={styles.profileRole}>{roleLabel}</Text> : null}
           </View>
 

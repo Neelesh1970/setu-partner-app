@@ -49,7 +49,7 @@ function isLabWorkerApiPath(url: string | undefined): boolean {
   if (!url) return false;
   const path = url.split('?')[0].replace(/\/$/, '');
   const base = path.startsWith('/') ? path.slice(1) : path;
-  return base.startsWith('lab/');
+  return base.startsWith('lab/') || base === 'identity-verification';
 }
 
 axiosInstance.interceptors.request.use(

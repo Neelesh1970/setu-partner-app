@@ -287,7 +287,7 @@ const MyWallet: React.FC = () => {
             </View>
             <View style={styles.profileTextCol}>
               <Text style={styles.profileName}>{profileName}</Text>
-              <Text style={styles.profileLocation}>{profileLocation}</Text>
+              {/* <Text style={styles.profileLocation}>{profileLocation}</Text> */}
             </View>
           </View>
 

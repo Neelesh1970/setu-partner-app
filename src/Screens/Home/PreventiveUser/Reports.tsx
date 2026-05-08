@@ -83,15 +83,6 @@ type ReportByBookingResponse = {
   };
 };
 
-const STATIC_ROWS: ReportRow[] = Array.from({ length: 12 }, (_, i) => ({
-  id: `r${i + 1}`,
-  bookingId: null,
-  name: 'Riya Sharma',
-  patientId: 'B42D53338F',
-  dateLabel: '30 Mar 2026',
-  reportType: 'BMI analysis',
-}));
-
 type ReportsNav = NativeStackNavigationProp<RootStackParamList, 'Reports'>;
 type SidebarTab = 'testType' | 'timeRange';
 
@@ -350,8 +341,7 @@ const Reports: React.FC = () => {
         setRows(mapped);
       } catch (e) {
         if (seq !== requestSeq.current) return;
-        // Keep screen stable: fall back to existing static list on errors.
-        setRows(null);
+        setRows([]);
       } finally {
         if (seq === requestSeq.current) {
           setIsLoading(false);
@@ -502,7 +492,7 @@ const Reports: React.FC = () => {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {(rows ?? STATIC_ROWS).map((item, index, arr) => (
+          {(rows ?? []).map((item, index, arr) => (
             <ReportListItem
               key={item.id}
               item={item}
@@ -520,6 +510,11 @@ const Reports: React.FC = () => {
               onDownload={() => {}}
             />
           ))}
+          {!isLoading && (rows ?? []).length === 0 ? (
+            <View style={styles.emptyStateWrap}>
+              <Text style={styles.emptyStateText}>No reports Available</Text>
+            </View>
+          ) : null}
         </ScrollView>
       </View>
 
@@ -662,7 +657,7 @@ const Reports: React.FC = () => {
 
             <View style={styles.sheetFooter}>
               {/* <View style={styles.resultBlock}>
-                <Text style={styles.resultCount}>{isLoading ? '…' : String((rows ?? STATIC_ROWS).length)}</Text>
+                <Text style={styles.resultCount}>{isLoading ? '…' : String((rows ?? []).length)}</Text>
                 <Text style={styles.resultSub}>Test Found</Text>
               </View> */}
               <TouchableOpacity style={styles.applyBtn} onPress={applyFilters} activeOpacity={0.9}>
@@ -854,6 +849,19 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: vs(24),
+  },
+  emptyStateWrap: {
+    flex: 1,
+    minHeight: vs(420),
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: ms(16),
+  },
+  emptyStateText: {
+    fontSize: ms(14),
+    fontWeight: '500',
+    color: TEXT_MUTED,
+    textAlign: 'center',
   },
   listItem: {
     paddingHorizontal: ms(16),
