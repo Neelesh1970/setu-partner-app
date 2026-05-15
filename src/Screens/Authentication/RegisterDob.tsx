@@ -7,8 +7,6 @@ import {
   TouchableOpacity,
   StatusBar,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -67,81 +65,80 @@ const RegisterDob: React.FC = () => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#EDEDED" />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+
+      <View style={styles.topSection}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Text style={styles.backArrow}>←</Text>
+        </TouchableOpacity>
+
+        <View style={styles.progressRow}>
+          <View style={[styles.progressDot, styles.progressDotDone]} />
+          <View style={[styles.progressLine, styles.progressLineDone]} />
+          <View style={[styles.progressDot, styles.progressDotActive]} />
+          <View style={styles.progressLine} />
+          <View style={styles.progressDot} />
+        </View>
+      </View>
+
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        automaticallyAdjustKeyboardInsets={true}
+        contentContainerStyle={styles.scrollContent}
         style={styles.flex}
       >
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-        >
-          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-            <Text style={styles.backArrow}>←</Text>
-          </TouchableOpacity>
+        <View style={styles.bottomCard}>
+          <Text style={styles.title}>Date of Birth</Text>
+          <Text style={styles.subtitle}>Enter the user's date of birth.</Text>
 
-          <View style={styles.progressRow}>
-            <View style={[styles.progressDot, styles.progressDotDone]} />
-            <View style={[styles.progressLine, styles.progressLineDone]} />
-            <View style={[styles.progressDot, styles.progressDotActive]} />
-            <View style={styles.progressLine} />
-            <View style={styles.progressDot} />
-          </View>
-
-          <View style={styles.bottomCard}>
-            <Text style={styles.title}>Date of Birth</Text>
-            <Text style={styles.subtitle}>Enter the user's date of birth.</Text>
-
-            <View style={styles.dobRow}>
-              <View style={styles.dobField}>
-                <Text style={styles.label}>Day</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="DD"
-                  placeholderTextColor="#aaa"
-                  keyboardType="number-pad"
-                  value={day}
-                  onChangeText={t => setDay(t.replace(/\D/g, '').slice(0, 2))}
-                  maxLength={2}
-                />
-              </View>
-              <View style={styles.dobField}>
-                <Text style={styles.label}>Month</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="MM"
-                  placeholderTextColor="#aaa"
-                  keyboardType="number-pad"
-                  value={month}
-                  onChangeText={t => setMonth(t.replace(/\D/g, '').slice(0, 2))}
-                  maxLength={2}
-                />
-              </View>
-              <View style={[styles.dobField, styles.yearField]}>
-                <Text style={styles.label}>Year</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="YYYY"
-                  placeholderTextColor="#aaa"
-                  keyboardType="number-pad"
-                  value={year}
-                  onChangeText={t => setYear(t.replace(/\D/g, '').slice(0, 4))}
-                  maxLength={4}
-                />
-              </View>
+          <View style={styles.dobRow}>
+            <View style={styles.dobField}>
+              <Text style={styles.label}>Day</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="DD"
+                placeholderTextColor="#aaa"
+                keyboardType="number-pad"
+                value={day}
+                onChangeText={t => setDay(t.replace(/\D/g, '').slice(0, 2))}
+                maxLength={2}
+              />
             </View>
-
-            <TouchableOpacity
-              style={styles.button}
-              onPress={handleNext}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.buttonText}>Next →</Text>
-            </TouchableOpacity>
+            <View style={styles.dobField}>
+              <Text style={styles.label}>Month</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="MM"
+                placeholderTextColor="#aaa"
+                keyboardType="number-pad"
+                value={month}
+                onChangeText={t => setMonth(t.replace(/\D/g, '').slice(0, 2))}
+                maxLength={2}
+              />
+            </View>
+            <View style={[styles.dobField, styles.yearField]}>
+              <Text style={styles.label}>Year</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="YYYY"
+                placeholderTextColor="#aaa"
+                keyboardType="number-pad"
+                value={year}
+                onChangeText={t => setYear(t.replace(/\D/g, '').slice(0, 4))}
+                maxLength={4}
+              />
+            </View>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+
+          <TouchableOpacity
+            style={styles.button}
+            onPress={handleNext}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.buttonText}>Next →</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
@@ -155,6 +152,9 @@ const styles = StyleSheet.create({
   },
   flex: {
     flex: 1,
+  },
+  topSection: {
+    paddingBottom: 8,
   },
   backBtn: {
     padding: 16,
@@ -195,7 +195,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   bottomCard: {
-    marginTop: 'auto',
+    flex: 1,
     backgroundColor: '#fff',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,

@@ -4,148 +4,151 @@ import {
   Text,
   StyleSheet,
   StatusBar,
-  ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
+  BackHandler,
   Platform,
-  Alert,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRoute } from "@react-navigation/native";
+import Ionicons from "react-native-vector-icons/Ionicons";
 import { ms, s, vs } from "react-native-size-matters";
+import { useFocusEffect } from "@react-navigation/native";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import PreventiveHealthHeader from "./PreventiveHealthHeader";
-import AppSkeleton from "../Components/AppSkeleton";
 import { getBooking } from "../../../api/preventivePayment";
-import { COLORS as THEME } from "../../../Constants/theme";
+import type { RootStackParamList } from "../../../navigation/types";
+
+/* ─────────────────────────── constants ─────────────────────────── */
 
 const COLORS = {
-  headerBg: THEME.PRIMARY,
-  bg: "#FFFFFF",
-  textPrimary: "#000000",
-  textSecondary: "#6B6B6B",
-  cardBorder: "#E0E5F0",
-  cta: THEME.PRIMARY,
+  headerBg:   "#1C39BB",
+  bg:         "#F8FAFC",
+  textPrimary:"#0F172A",
+  textMuted:  "#64748B",
+  divider:    "#E2E8F0",
+  cta:        "#1D4ED8",
+  ctaText:    "#FFFFFF",
+  success:    "#16A34A",
+  pending:    "#D97706",
+  cardBg:     "#FFFFFF",
+  cardBorder: "#E2E8F0",
 };
 
 const HPAD = ms(16);
 
-function pickString(obj: unknown, keys: string[]): string {
-  if (obj == null || typeof obj !== "object") return "—";
-  const o = obj as Record<string, unknown>;
-  for (const k of keys) {
-    const v = o[k];
-    if (v != null && String(v).trim() !== "") return String(v);
-  }
-  return "—";
+/* ─────────────────────── InfoRow subcomponent ───────────────────── */
+
+type InfoRowProps = { label: string; value: string; valueColor?: string };
+
+function InfoRow({ label, value, valueColor }: InfoRowProps): React.JSX.Element {
+  return (
+    <View style={styles.infoRow}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={[styles.infoValue, valueColor ? { color: valueColor } : null]}>
+        {value}
+      </Text>
+    </View>
+  );
 }
 
-function capitalizeFirstWord(s: string): string {
-  const t = s.trim();
-  if (!t) return "—";
-  return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
-}
+/* ─────────────────────────── component ─────────────────────────── */
 
-function normalizeItems(booking: Record<string, unknown> | null): Record<string, unknown>[] {
-  if (booking == null) return [];
-  const raw = booking.items;
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((x) => x != null && typeof x === "object") as Record<string, unknown>[];
-}
+type Props = NativeStackScreenProps<RootStackParamList, "PreventiveBookingSummary">;
 
-export default function PreventiveBookingSummary({ navigation }: { navigation: any }) {
-  const route = useRoute<any>();
-  const bookingId = route.params?.bookingId as string | undefined;
+export default function PreventiveBookingSummary({ navigation, route }: Props): React.JSX.Element {
+  const bookingId = route.params?.bookingId;
 
-  const [loading, setLoading] = useState(true);
   const [booking, setBooking] = useState<Record<string, unknown> | null>(null);
   const [payment, setPayment] = useState<Record<string, unknown> | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
 
-  const load = useCallback(async () => {
-    if (!bookingId) {
-      setLoading(false);
-      Alert.alert("Booking", "Missing booking id.");
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await getBooking(bookingId);
-      const data = res?.data;
-      let b: Record<string, unknown> | null = null;
-      let p: Record<string, unknown> | null = null;
-      if (data != null && typeof data === "object") {
-        const d = data as Record<string, unknown>;
-        if (d.booking != null && typeof d.booking === "object") {
-          const inner = d.booking as Record<string, unknown>;
-          b = {
-            ...inner,
-            patient: inner.patient ?? d.patient,
-            items: inner.items ?? d.items,
-          };
-        } else if (d.id != null || d.total_price != null) {
-          b = d;
-        }
-        if (d.payment != null && typeof d.payment === "object") {
-          p = d.payment as Record<string, unknown>;
-        }
-        if (!p && b?.payment != null && typeof b.payment === "object") {
-          p = b.payment as Record<string, unknown>;
-        }
-      }
-      setBooking(b);
-      setPayment(p);
-    } catch (e: unknown) {
-      const msg =
-        e && typeof e === "object" && "message" in e
-          ? String((e as Error).message)
-          : "Failed to load booking";
-      console.log("getBooking error", e);
-      Alert.alert("Booking", msg);
-      setBooking(null);
-      setPayment(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [bookingId]);
+  /* ── fetch booking detail ── */
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (!bookingId) return;
 
-  const patient =
-    booking?.patient != null && typeof booking.patient === "object"
-      ? (booking.patient as Record<string, unknown>)
-      : null;
+    async function fetchBooking(): Promise<void> {
+      setLoading(true);
+      try {
+        const res  = await getBooking(bookingId as string);
+        const data = res?.data;
+        let b: Record<string, unknown> | null = null;
+        let p: Record<string, unknown> | null = null;
 
-  const items = normalizeItems(booking);
-  const firstItem = items[0] ?? null;
+        if (data != null && typeof data === "object") {
+          const d = data as Record<string, unknown>;
 
-  const packageName = (() => {
-    if (firstItem == null) return "—";
-    const pkg = pickString(firstItem, ["source_package_name"]);
-    if (pkg !== "—") return pkg;
-    return pickString(firstItem, ["device_name"]);
-  })();
+          if (d.booking != null && typeof d.booking === "object") {
+            const inner = d.booking as Record<string, unknown>;
+            b = {
+              ...inner,
+              patient: inner.patient ?? d.patient,
+              items:   inner.items   ?? d.items,
+            };
+          } else if (d.id != null || d.total_price != null) {
+            b = d;
+          }
 
-  const testNames = items
-    .map((it) => pickString(it, ["device_name"]))
-    .filter((n) => n !== "—");
+          if (d.payment != null && typeof d.payment === "object") {
+            p = d.payment as Record<string, unknown>;
+          }
+          if (!p && b?.payment != null && typeof b.payment === "object") {
+            p = b.payment as Record<string, unknown>;
+          }
+        }
 
-  const totalPrice = pickString(booking, ["total_price"]);
-  const paymentStatusBooking = pickString(booking, ["payment_status"]);
-  const paymentStatusPayment = pickString(payment, ["status"]);
+        setBooking(b);
+        setPayment(p);
+      } catch (e) {
+        console.log("[PreventiveBookingSummary] fetch error", e);
+      } finally {
+        setLoading(false);
+      }
+    }
 
-  const displayStatusRaw =
-    paymentStatusBooking !== "—" ? paymentStatusBooking : paymentStatusPayment;
-  const displayPaymentStatus =
-    displayStatusRaw === "—"
-      ? "—"
-      : displayStatusRaw.toLowerCase() === "success"
-        ? "Paid"
-        : capitalizeFirstWord(displayStatusRaw);
+    void fetchBooking();
+  }, [bookingId]);
 
-  const patientName = pickString(patient, ["full_name"]);
-  const patientAge = patient?.age != null ? String(patient.age) : "—";
-  const patientGender = capitalizeFirstWord(pickString(patient, ["gender"]));
-  const patientPhone = pickString(patient, ["phone"]);
+  /* ── hardware back → home ── */
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = (): boolean => {
+        navigation.navigate("PreventiveHealth");
+        return true;
+      };
+      const sub = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+      return () => sub.remove();
+    }, [navigation]),
+  );
+
+  /* ── derived display values ── */
+
+  const displayBookingId = String(booking?.id ?? bookingId ?? "—");
+  const amount           = Number(booking?.total_price ?? 0);
+  const serviceType      = String(booking?.service_type ?? "—");
+
+  const paymentStatusRaw = String(
+    booking?.payment_status ?? payment?.status ?? "—",
+  );
+  const isSuccess =
+    paymentStatusRaw.toLowerCase() === "paid" ||
+    paymentStatusRaw.toLowerCase() === "success";
+  const displayStatus = isSuccess
+    ? "Paid"
+    : paymentStatusRaw !== "—"
+    ? paymentStatusRaw.charAt(0).toUpperCase() + paymentStatusRaw.slice(1).toLowerCase()
+    : "—";
+  const statusColor = isSuccess ? COLORS.success : COLORS.pending;
+
+  const paymentMethodRaw = String(payment?.payment_method ?? "—");
+  const paymentMethod    =
+    paymentMethodRaw !== "—" ? paymentMethodRaw.toUpperCase() : "—";
+  const methodIcon: string =
+    paymentMethod === "UPI" ? "phone-portrait-outline" : "cash-outline";
+
+  /* ── render ── */
 
   return (
     <View style={styles.root}>
@@ -153,59 +156,68 @@ export default function PreventiveBookingSummary({ navigation }: { navigation: a
 
       <SafeAreaView style={styles.headerSafe}>
         <PreventiveHealthHeader
-          title="Test details"
+          title="Booking Summary"
           onBackPress={() => navigation.navigate("PreventiveHealth")}
         />
       </SafeAreaView>
 
       <SafeAreaView style={styles.body}>
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scroll}
-        >
-          {loading ? (
-            <View style={styles.skeletonWrap} pointerEvents="none">
-              <AppSkeleton variant="default" />
+        {loading ? (
+          <View style={styles.loaderWrap}>
+            <ActivityIndicator size="large" color={COLORS.cta} />
+          </View>
+        ) : (
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scroll}
+          >
+            {/* Status badge */}
+            <View style={[styles.badge, { borderColor: statusColor }]}>
+              <Ionicons
+                name={isSuccess ? "checkmark-circle" : "time-outline"}
+                size={ms(40)}
+                color={statusColor}
+              />
+              <Text style={[styles.badgeText, { color: statusColor }]}>
+                {isSuccess ? "Payment Successful" : "Booking Confirmed"}
+              </Text>
             </View>
-          ) : (
-            <>
-              <Text style={styles.sectionHeading}>Patient Details</Text>
-              <Card>
-                <Row label="Patient Name" value={patientName} isLast={false} />
-                <Row label="Age" value={patientAge} isLast={false} />
-                <Row label="Gender" value={patientGender} isLast={false} />
-                <Row label="Contact Number" value={patientPhone} isLast />
-              </Card>
 
-              <Text style={[styles.sectionHeading, styles.sectionHeadingSpaced]}>
-                Test Details
+            {/* Booking details card */}
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Booking Details</Text>
+              <View style={styles.cardDivider} />
+              <InfoRow label="Booking ID"     value={displayBookingId} />
+              <InfoRow label="Service Type"   value={serviceType} />
+              <InfoRow label="Amount"         value={`₹${amount.toFixed(2)}`} />
+              <InfoRow label="Payment Method" value={paymentMethod} />
+              <InfoRow
+                label="Status"
+                value={displayStatus}
+                valueColor={statusColor}
+              />
+            </View>
+
+            {/* Payment method strip */}
+            <View style={styles.methodStrip}>
+              <Ionicons name={methodIcon} size={ms(22)} color={COLORS.cta} />
+              <Text style={styles.methodText}>
+                {paymentMethod === "UPI"
+                  ? "Paid via UPI"
+                  : "Cash payment selected — Amount will be collected at the time of visit."}
               </Text>
-              <Card>
-                <Row label="Package Name" value={packageName} isLast={false} />
-                <TestNamesRow names={testNames} />
-              </Card>
+            </View>
+          </ScrollView>
+        )}
 
-              <Text style={[styles.sectionHeading, styles.sectionHeadingSpaced]}>
-                Payment Info
-              </Text>
-              <Card>
-                <Row
-                  label="Amount"
-                  value={totalPrice !== "—" ? `₹${totalPrice}` : "—"}
-                  isLast={false}
-                />
-                <Row label="Payment Status" value={displayPaymentStatus} isLast />
-              </Card>
-            </>
-          )}
-        </ScrollView>
-
+        {/* Footer CTA */}
         <View style={styles.footer}>
           <TouchableOpacity
+            activeOpacity={0.9}
             style={styles.cta}
-            onPress={() => navigation.navigate("PreventiveHealth")}
+            onPress={() => navigation.navigate("TestActivity", {})}
           >
-            <Text style={styles.ctaText}>Perform Test</Text>
+            <Text style={styles.ctaText}>View My Bookings</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -213,63 +225,7 @@ export default function PreventiveBookingSummary({ navigation }: { navigation: a
   );
 }
 
-function Card({ children }: { children: React.ReactNode }) {
-  return <View style={styles.card}>{children}</View>;
-}
-
-const valueTextAndroidProps =
-  Platform.OS === "android"
-    ? ({
-        textBreakStrategy: "simple" as const,
-        android_hyphenationFrequency: "none" as const,
-      })
-    : {};
-
-function Row({
-  label,
-  value,
-  isLast,
-}: {
-  label: string;
-  value: string;
-  isLast?: boolean;
-}) {
-  return (
-    <View style={[styles.row, isLast ? styles.rowLast : null]}>
-      <Text style={styles.label}>{label}</Text>
-      <View style={styles.valueWrap}>
-        <Text style={styles.value} {...valueTextAndroidProps}>
-          {value}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-function TestNamesRow({ names }: { names: string[] }) {
-  return (
-    <View style={[styles.row, styles.rowLast]}>
-      <Text style={styles.label}>Test</Text>
-      <View style={styles.valueWrap}>
-        {names.length === 0 ? (
-          <Text style={styles.value} {...valueTextAndroidProps}>
-            —
-          </Text>
-        ) : (
-          names.map((n, i) => (
-            <Text
-              key={`${n}-${i}`}
-              style={[styles.value, i > 0 ? styles.testNameLine : null]}
-              {...valueTextAndroidProps}
-            >
-              {n}
-            </Text>
-          ))
-        )}
-      </View>
-    </View>
-  );
-}
+/* ─────────────────────────── styles ────────────────────────────── */
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
@@ -281,105 +237,115 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
 
-  body: { flex: 1, backgroundColor: COLORS.bg },
+  body: { flex: 1 },
+
+  loaderWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
 
   scroll: {
     paddingHorizontal: HPAD,
-    paddingTop: vs(20),
+    paddingTop: vs(24),
     paddingBottom: vs(100),
   },
 
-  skeletonWrap: {
-    width: "100%",
-    height: vs(320),
-    marginTop: vs(8),
-    overflow: "hidden",
+  badge: {
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderRadius: ms(14),
+    paddingVertical: vs(24),
+    marginBottom: vs(20),
   },
 
-  sectionHeading: {
+  badgeText: {
+    marginTop: vs(10),
     fontSize: s(17),
-    fontWeight: "700",
+    fontWeight: "800",
+  },
+
+  card: {
+    backgroundColor: COLORS.cardBg,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    borderRadius: ms(12),
+    padding: ms(16),
+    marginBottom: vs(16),
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 1 },
+  },
+
+  cardTitle: {
+    fontSize: s(15),
+    fontWeight: "800",
     color: COLORS.textPrimary,
     marginBottom: vs(10),
   },
 
-  sectionHeadingSpaced: {
-    marginTop: vs(20),
-  },
+  cardDivider: { height: 1, backgroundColor: COLORS.divider, marginBottom: vs(10) },
 
-  card: {
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    borderRadius: ms(12),
-    paddingHorizontal: ms(14),
-    paddingVertical: ms(14),
-  },
-
-  row: {
+  infoRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: vs(14),
-    gap: ms(12),
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: vs(7),
   },
 
-  rowLast: {
-    marginBottom: 0,
-  },
-
-  label: {
-    flexGrow: 0,
-    flexShrink: 1,
-    maxWidth: "38%",
-    fontSize: s(15),
-    color: COLORS.textSecondary,
-  },
-
-  /**
-   * Fills remaining row width so Text measures at full width (avoids shrink-wrap +
-   * mid-word breaks). Do not use alignItems "flex-end" here — it narrows Text.
-   */
-  valueWrap: {
-    flex: 1,
-    minWidth: 0,
-    alignItems: "stretch",
-  },
-
-  value: {
-    width: "100%",
-    fontSize: s(15),
+  infoLabel: {
+    fontSize: s(13),
     fontWeight: "600",
+    color: COLORS.textMuted,
+    flex: 1,
+  },
+
+  infoValue: {
+    fontSize: s(13),
+    fontWeight: "700",
     color: COLORS.textPrimary,
     textAlign: "right",
+    flex: 1,
   },
 
-  testNameLine: {
-    marginTop: vs(6),
+  methodStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.cardBg,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    borderRadius: ms(10),
+    paddingHorizontal: ms(14),
+    paddingVertical: vs(14),
+    gap: ms(10),
+  },
+
+  methodText: {
+    flex: 1,
+    fontSize: s(13),
+    fontWeight: "600",
+    color: COLORS.textPrimary,
   },
 
   footer: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: "#FFFFFF",
-    borderTopWidth: 1,
-    borderTopColor: COLORS.cardBorder,
     paddingHorizontal: HPAD,
     paddingTop: vs(12),
-    paddingBottom: Platform.OS === "ios" ? vs(20) : vs(14),
+    paddingBottom: Platform.OS === "ios" ? vs(24) : vs(18),
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.divider,
+    backgroundColor: COLORS.cardBg,
   },
 
   cta: {
     backgroundColor: COLORS.cta,
-    borderRadius: ms(32),
-    paddingVertical: vs(14),
+    borderRadius: ms(10),
+    paddingVertical: vs(15),
     alignItems: "center",
+    justifyContent: "center",
   },
 
   ctaText: {
-    color: "#FFFFFF",
-    fontSize: s(16),
-    fontWeight: "700",
+    color: COLORS.ctaText,
+    fontSize: s(15),
+    fontWeight: "800",
   },
 });

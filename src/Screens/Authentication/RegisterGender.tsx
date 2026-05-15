@@ -6,8 +6,6 @@ import {
   TouchableOpacity,
   StatusBar,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -56,85 +54,83 @@ const RegisterGender: React.FC = () => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#EDEDED" />
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      <View style={styles.topSection}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Text style={styles.backArrow}>←</Text>
+        </TouchableOpacity>
+
+        <View style={styles.progressRow}>
+          <View style={[styles.progressDot, styles.progressDotDone]} />
+          <View style={[styles.progressLine, styles.progressLineDone]} />
+          <View style={[styles.progressDot, styles.progressDotDone]} />
+          <View style={[styles.progressLine, styles.progressLineDone]} />
+          <View style={[styles.progressDot, styles.progressDotActive]} />
+        </View>
+      </View>
+
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        automaticallyAdjustKeyboardInsets={true}
+        contentContainerStyle={styles.scrollContent}
         style={styles.flex}
       >
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-        >
-          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-            <Text style={styles.backArrow}>←</Text>
-          </TouchableOpacity>
+        <View style={styles.bottomCard}>
+          <Text style={styles.title}>Select Gender</Text>
+          <Text style={styles.subtitle}>Choose the user's gender to continue.</Text>
 
-          <View style={styles.progressRow}>
-            <View style={[styles.progressDot, styles.progressDotDone]} />
-            <View style={[styles.progressLine, styles.progressLineDone]} />
-            <View style={[styles.progressDot, styles.progressDotDone]} />
-            <View style={[styles.progressLine, styles.progressLineDone]} />
-            <View style={[styles.progressDot, styles.progressDotActive]} />
-          </View>
-
-          <View style={styles.bottomCard}>
-            <Text style={styles.title}>Select Gender</Text>
-            <Text style={styles.subtitle}>Choose the user's gender to continue.</Text>
-
-            <View style={styles.optionsRow}>
-              <TouchableOpacity
-                style={[
-                  styles.optionCard,
-                  gender === 'male' && styles.optionCardSelected,
-                ]}
-                onPress={() => setGender('male')}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.optionEmoji}>👨</Text>
-                <Text
-                  style={[
-                    styles.optionLabel,
-                    gender === 'male' && styles.optionLabelSelected,
-                  ]}
-                >
-                  Male
-                </Text>
-                {gender === 'male' && <View style={styles.checkDot} />}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.optionCard,
-                  gender === 'female' && styles.optionCardSelected,
-                ]}
-                onPress={() => setGender('female')}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.optionEmoji}>👩</Text>
-                <Text
-                  style={[
-                    styles.optionLabel,
-                    gender === 'female' && styles.optionLabelSelected,
-                  ]}
-                >
-                  Female
-                </Text>
-                {gender === 'female' && <View style={styles.checkDot} />}
-              </TouchableOpacity>
-            </View>
-
+          <View style={styles.optionsRow}>
             <TouchableOpacity
-              style={[styles.button, !gender && styles.buttonDisabled]}
-              onPress={handleNext}
-              disabled={!gender}
+              style={[
+                styles.optionCard,
+                gender === 'male' && styles.optionCardSelected,
+              ]}
+              onPress={() => setGender('male')}
               activeOpacity={0.85}
             >
-              <Text style={styles.buttonText}>Next →</Text>
+              <Text style={styles.optionEmoji}>👨</Text>
+              <Text
+                style={[
+                  styles.optionLabel,
+                  gender === 'male' && styles.optionLabelSelected,
+                ]}
+              >
+                Male
+              </Text>
+              {gender === 'male' && <View style={styles.checkDot} />}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.optionCard,
+                gender === 'female' && styles.optionCardSelected,
+              ]}
+              onPress={() => setGender('female')}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.optionEmoji}>👩</Text>
+              <Text
+                style={[
+                  styles.optionLabel,
+                  gender === 'female' && styles.optionLabelSelected,
+                ]}
+              >
+                Female
+              </Text>
+              {gender === 'female' && <View style={styles.checkDot} />}
             </TouchableOpacity>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+
+          <TouchableOpacity
+            style={[styles.button, !gender && styles.buttonDisabled]}
+            onPress={handleNext}
+            disabled={!gender}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.buttonText}>Next →</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
@@ -151,6 +147,9 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
+  },
+  topSection: {
+    paddingBottom: 8,
   },
   backBtn: {
     padding: 16,
@@ -188,7 +187,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#2F3DBD',
   },
   bottomCard: {
-    marginTop: 'auto',
+    flex: 1,
     backgroundColor: '#fff',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
