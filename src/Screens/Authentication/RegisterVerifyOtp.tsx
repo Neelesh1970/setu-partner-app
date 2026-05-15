@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -106,72 +107,79 @@ const RegisterVerifyOtp: React.FC = () => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#EDEDED" />
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         style={styles.flex}
       >
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-          <Text style={styles.backArrow}>←</Text>
-        </TouchableOpacity>
-
-        <View style={styles.bottomCard}>
-          <Text style={styles.title}>Verify OTP</Text>
-          <Text style={styles.subtitle}>
-            Enter the 6-digit OTP sent to{'\n'}
-            <Text style={styles.mobileText}>+91 {mobile}</Text>
-          </Text>
-
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={() => inputRef.current?.focus()}
-            style={styles.otpRow}
-          >
-            {otpBoxes.map((digit, i) => (
-              <View
-                key={i}
-                style={[styles.otpBox, digit ? styles.otpBoxFilled : null]}
-              >
-                <Text style={styles.otpDigit}>{digit}</Text>
-              </View>
-            ))}
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+            <Text style={styles.backArrow}>←</Text>
           </TouchableOpacity>
 
-          <TextInput
-            ref={inputRef}
-            style={styles.hiddenInput}
-            keyboardType="number-pad"
-            value={otp}
-            onChangeText={handleOtpChange}
-            maxLength={OTP_LENGTH}
-            autoFocus
-          />
+          <View style={styles.bottomCard}>
+            <Text style={styles.title}>Verify OTP</Text>
+            <Text style={styles.subtitle}>
+              Enter the 6-digit OTP sent to{'\n'}
+              <Text style={styles.mobileText}>+91 {mobile}</Text>
+            </Text>
 
-          <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleVerify}
-            disabled={loading}
-            activeOpacity={0.85}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Verify OTP</Text>
-            )}
-          </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={() => inputRef.current?.focus()}
+              style={styles.otpRow}
+            >
+              {otpBoxes.map((digit, i) => (
+                <View
+                  key={i}
+                  style={[styles.otpBox, digit ? styles.otpBoxFilled : null]}
+                >
+                  <Text style={styles.otpDigit}>{digit}</Text>
+                </View>
+              ))}
+            </TouchableOpacity>
 
-          <View style={styles.resendRow}>
-            {resendTimer > 0 ? (
-              <Text style={styles.resendTimer}>
-                Resend OTP in <Text style={styles.resendTimerBold}>{resendTimer}s</Text>
-              </Text>
-            ) : resendLoading ? (
-              <ActivityIndicator size="small" color="#2F3DBD" />
-            ) : (
-              <TouchableOpacity onPress={handleResend}>
-                <Text style={styles.resendLink}>Resend OTP</Text>
-              </TouchableOpacity>
-            )}
+            <TextInput
+              ref={inputRef}
+              style={styles.hiddenInput}
+              keyboardType="number-pad"
+              value={otp}
+              onChangeText={handleOtpChange}
+              maxLength={OTP_LENGTH}
+              autoFocus
+            />
+
+            <TouchableOpacity
+              style={[styles.button, loading && styles.buttonDisabled]}
+              onPress={handleVerify}
+              disabled={loading}
+              activeOpacity={0.85}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.buttonText}>Verify OTP</Text>
+              )}
+            </TouchableOpacity>
+
+            <View style={styles.resendRow}>
+              {resendTimer > 0 ? (
+                <Text style={styles.resendTimer}>
+                  Resend OTP in <Text style={styles.resendTimerBold}>{resendTimer}s</Text>
+                </Text>
+              ) : resendLoading ? (
+                <ActivityIndicator size="small" color="#2F3DBD" />
+              ) : (
+                <TouchableOpacity onPress={handleResend}>
+                  <Text style={styles.resendLink}>Resend OTP</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -186,6 +194,9 @@ const styles = StyleSheet.create({
   },
   flex: {
     flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   backBtn: {
     padding: 16,

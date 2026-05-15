@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -14,11 +14,15 @@ import {
   Pressable,
   TextInput,
   Linking,
+  Alert,
+  unstable_batchedUpdates,
 } from 'react-native';
+import ReactNativeBlobUtil from 'react-native-blob-util';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ms, vs } from 'react-native-size-matters';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RouteProp } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { BlurView } from '@react-native-community/blur';
 
@@ -26,7 +30,9 @@ import PreventiveHealthHeader from './PreventiveHealthHeader';
 import { COLORS } from '../../../Constants/theme';
 import type { RootStackParamList } from '../../../navigation/types';
 import { getLabReports } from '../../../api/labReportsApi';
-import axiosInstance from '../../../api/axiosInstance';
+import axiosInstance, { isLabWorkerApiPath } from '../../../api/axiosInstance';
+import axios from 'axios';
+import { BASE_URL } from '../../../api/apiConfig';
 import { getLabPatients, type LabPatientFilter } from './PreventiveHealthAPI';
 
 const PRIMARY = COLORS.PRIMARY;
@@ -69,6 +75,8 @@ const TIME_RANGE_OPTIONS = [
 type ReportRow = {
   id: string;
   bookingId?: string | null;
+  /** Direct S3/CDN URL from the list API — used by the download flow to avoid an extra round-trip. */
+  reportUrl?: string | null;
   name: string;
   patientId: string;
   dateLabel: string;
@@ -84,6 +92,7 @@ type ReportByBookingResponse = {
 };
 
 type ReportsNav = NativeStackNavigationProp<RootStackParamList, 'Reports'>;
+type ReportsRouteProp = RouteProp<RootStackParamList, 'Reports'>;
 type SidebarTab = 'testType' | 'timeRange';
 
 type ChipItem = { key: string; label: string };
@@ -143,12 +152,14 @@ function ReportListItem({
   onSeeDetails,
   onView,
   onDownload,
+  isDownloading,
 }: {
   item: ReportRow;
   isLast: boolean;
   onSeeDetails: () => void;
   onView: () => void;
   onDownload: () => void;
+  isDownloading?: boolean;
 }) {
   return (
     <View style={[styles.listItem, !isLast && styles.listItemBorder]}>
@@ -174,12 +185,16 @@ function ReportListItem({
             <Ionicons name="eye-outline" size={ms(22)} color={PRIMARY} />
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.iconSquare}
-            onPress={onDownload}
+            style={[styles.iconSquare, isDownloading && styles.iconSquareDisabled]}
+            onPress={isDownloading ? undefined : onDownload}
             accessibilityRole="button"
             accessibilityLabel="Download report"
           >
-            <Ionicons name="download-outline" size={ms(22)} color={PRIMARY} />
+            {isDownloading ? (
+              <ActivityIndicator size="small" color={PRIMARY} />
+            ) : (
+              <Ionicons name="download-outline" size={ms(22)} color={PRIMARY} />
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -226,7 +241,11 @@ function formatDateLabel(isoLike: string | undefined): string {
 
 const Reports: React.FC = () => {
   const navigation = useNavigation<ReportsNav>();
+  const route = useRoute<ReportsRouteProp>();
   const insets = useSafeAreaInsets();
+  // bookingId passed from RemidioQRScanner after Generate PDF — auto-opens the report on mount
+  const autoOpenBookingId = route.params?.bookingId ?? null;
+  const autoOpenTriggeredRef = useRef(false);
 
   const WebView = useMemo(() => {
     try {
@@ -332,6 +351,7 @@ const Reports: React.FC = () => {
           return {
             id: r.id ?? r.booking_id,
             bookingId: r.booking_id ?? null,
+            reportUrl: r.report_url ?? null,
             name: r.patient_name ?? '—',
             patientId,
             dateLabel,
@@ -359,22 +379,112 @@ const Reports: React.FC = () => {
     setViewerLoading(false);
   }, []);
 
+  // Tracks which row IDs are currently downloading so the button shows a spinner.
+  const [downloadingIds, setDownloadingIds] = useState<Set<string>>(new Set());
+
+  const downloadReport = useCallback(async (item: ReportRow) => {
+    const rowKey = String(item.bookingId ?? item.id ?? '').trim();
+    if (!rowKey) {
+      console.log('[download] no id available for row');
+      return;
+    }
+    if (downloadingIds.has(rowKey)) {
+      console.log('[download] already downloading:', rowKey);
+      return;
+    }
+
+    setDownloadingIds((prev) => new Set(prev).add(rowKey));
+    console.log('[download] starting download for bookingId:', rowKey);
+
+    try {
+      // Prefer the URL already in the list data; fall back to the by-booking API.
+      let url = String(item.reportUrl ?? '').trim();
+      if (!url) {
+        console.log('[download] reportUrl missing in list data, fetching via API for:', rowKey);
+        const res = await axiosInstance.get<ReportByBookingResponse>(
+          `reports/by-booking/${rowKey}`,
+        );
+        if (!res.data?.success) {
+          throw new Error(res.data?.message ?? 'Failed to get report URL');
+        }
+        url = String(res.data?.data?.report_url ?? '').trim();
+      }
+
+      if (!url) {
+        throw new Error('Report URL not available');
+      }
+
+      console.log('[download] report URL:', url);
+
+      const safeId = rowKey.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 16);
+      const filename = `report_${safeId}_${Date.now()}.pdf`;
+
+      if (Platform.OS === 'android') {
+        console.log('[download] using Android DownloadManager, filename:', filename);
+        await ReactNativeBlobUtil.config({
+          addAndroidDownloads: {
+            useDownloadManager: true,
+            notification: true,
+            title: filename,
+            description: 'Downloading medical report',
+            mime: 'application/pdf',
+            mediaScannable: true,
+            path: `${ReactNativeBlobUtil.fs.dirs.DownloadDir}/${filename}`,
+          },
+        }).fetch('GET', url);
+        console.log('[download] Android DownloadManager registered successfully');
+        Alert.alert('Download started', 'The report is downloading. Check your notifications or the Downloads folder.');
+      } else {
+        // iOS: open URL in browser/PDF viewer
+        console.log('[download] iOS — opening URL in browser:', url);
+        await Linking.openURL(url);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Something went wrong';
+      console.log('[download] failed:', msg, err);
+      Alert.alert('Download failed', msg);
+    } finally {
+      setDownloadingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(rowKey);
+        return next;
+      });
+    }
+  }, [downloadingIds]);
+
   const openReportByBookingId = useCallback(async (bookingId: string | undefined | null) => {
     const id = String(bookingId ?? '').trim();
     if (!id) return;
     try {
-      setReportError('');
-      setReportLoading(true);
-      setViewerLoading(true);
-      setReportUrl('');
+      // Batch all initial state updates into one render so the modal always
+      // opens with reportLoading=true (prevents a white-screen flash on Android).
+      unstable_batchedUpdates(() => {
+        setReportError('');
+        setReportLoading(true);
+        setViewerLoading(true);
+        setReportUrl('');
+        // Force WebView remount + bypass cache on re-open for same report.
+        setReportNonce((n) => n + 1);
+        setReportVisible(true);
+      });
 
-      // Force WebView remount + bypass cache on re-open for same report.
-      setReportNonce((n) => n + 1);
-      setReportVisible(true);
-
-      const path = `/reports/by-booking/${id}`;
+      // No leading `/` — axios merges with baseURL; a leading `/` drops `/api/v1` and hits the wrong host path (404).
+      const path = `reports/by-booking/${id}`;
+      const resolvedUrl = axios.getUri({
+        method: 'get',
+        baseURL: axiosInstance.defaults.baseURL,
+        url: path,
+      });
       console.log('[report] booking_id:', id);
-      console.log('[report] GET', path);
+      console.log('[report] path (relative to baseURL):', path);
+      console.log('[report] axiosInstance.defaults.baseURL:', axiosInstance.defaults.baseURL);
+      console.log('[report] apiConfig.BASE_URL:', BASE_URL);
+      console.log('[report] resolved absolute GET URL:', resolvedUrl);
+      console.log(
+        '[report] axios will send lab-worker JWT:',
+        isLabWorkerApiPath(path),
+        '(must be true for /reports/* — patient token often gets "Report not found")',
+      );
       const res = await axiosInstance.get<ReportByBookingResponse>(path);
       console.log('[report] status:', res.status);
       console.log('[report] body:', res.data);
@@ -391,6 +501,12 @@ const Reports: React.FC = () => {
       console.log('[report] report_url:', url);
       setReportUrl(url);
     } catch (e) {
+      const err = e as Error & { status?: number; responseData?: unknown };
+      console.log('[report] request failed — diagnostics:', {
+        message: err?.message,
+        httpStatus: err?.status,
+        responseBody: err?.responseData,
+      });
       const msg = e instanceof Error ? e.message : 'Failed to load report';
       setReportError(msg);
     } finally {
@@ -454,6 +570,18 @@ const Reports: React.FC = () => {
     }, [fetchReports]),
   );
 
+  // Auto-open the specific report when navigated from the RemidioQRScanner PDF flow.
+  // Runs once on mount so re-focusing the screen doesn't re-open the modal.
+  useEffect(() => {
+    if (autoOpenBookingId && !autoOpenTriggeredRef.current) {
+      autoOpenTriggeredRef.current = true;
+      console.log('[Reports] auto-opening report for bookingId:', autoOpenBookingId);
+      openReportByBookingId(autoOpenBookingId);
+    }
+  // openReportByBookingId has empty deps and is stable; autoOpenBookingId is from route params (stable)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <>
       <StatusBar barStyle="light-content" backgroundColor={PRIMARY} />
@@ -507,7 +635,10 @@ const Reports: React.FC = () => {
                 }
                 openReportByBookingId(item.bookingId);
               }}
-              onDownload={() => {}}
+              onDownload={() => {
+                void downloadReport(item);
+              }}
+              isDownloading={downloadingIds.has(String(item.bookingId ?? item.id ?? '').trim())}
             />
           ))}
           {!isLoading && (rows ?? []).length === 0 ? (
@@ -719,8 +850,14 @@ const Reports: React.FC = () => {
                   startInLoadingState
                   incognito
                   cacheEnabled={false}
-                  onLoadStart={() => setViewerLoading(true)}
-                  onLoadEnd={() => setViewerLoading(false)}
+                  onLoadStart={() => {
+                    console.log('[report] WebView onLoadStart');
+                    setViewerLoading(true);
+                  }}
+                  onLoadEnd={() => {
+                    console.log('[report] WebView onLoadEnd');
+                    setViewerLoading(false);
+                  }}
                   onError={(e: any) => {
                     console.log('[report] WebView error:', e?.nativeEvent);
                     setViewerLoading(false);
@@ -735,7 +872,8 @@ const Reports: React.FC = () => {
                 />
                 {viewerLoading ? (
                   <View style={styles.viewerLoadingOverlay} pointerEvents="none">
-                    <ActivityIndicator color={COLORS.WHITE} />
+                    <ActivityIndicator color={COLORS.WHITE} size="large" />
+                    <Text style={styles.reportHint}>Opening…</Text>
                   </View>
                 ) : null}
               </View>
@@ -918,6 +1056,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.WHITE,
+  },
+  iconSquareDisabled: {
+    opacity: 0.5,
   },
   modalRoot: {
     flex: 1,
@@ -1213,13 +1354,8 @@ const styles = StyleSheet.create({
     paddingVertical: vs(10),
   },
   viewerLoadingOverlay: {
-    position: 'absolute',
-    right: ms(12),
-    top: vs(12),
-    width: ms(32),
-    height: ms(32),
-    borderRadius: ms(16),
-    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#0B1220',
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -49,26 +49,27 @@ const RegisterName: React.FC = () => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#EDEDED" />
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         style={styles.flex}
       >
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-          <Text style={styles.backArrow}>←</Text>
-        </TouchableOpacity>
-
-        <View style={styles.progressRow}>
-          <View style={[styles.progressDot, styles.progressDotActive]} />
-          <View style={styles.progressLine} />
-          <View style={styles.progressDot} />
-          <View style={styles.progressLine} />
-          <View style={styles.progressDot} />
-        </View>
-
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
         >
+          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+            <Text style={styles.backArrow}>←</Text>
+          </TouchableOpacity>
+
+          <View style={styles.progressRow}>
+            <View style={[styles.progressDot, styles.progressDotActive]} />
+            <View style={styles.progressLine} />
+            <View style={styles.progressDot} />
+            <View style={styles.progressLine} />
+            <View style={styles.progressDot} />
+          </View>
+
           <View style={styles.bottomCard}>
             <Text style={styles.title}>What's your name?</Text>
             <Text style={styles.subtitle}>Enter the user's full name to continue.</Text>
@@ -150,9 +151,9 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'flex-end',
   },
   bottomCard: {
+    marginTop: 'auto',
     backgroundColor: '#fff',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,

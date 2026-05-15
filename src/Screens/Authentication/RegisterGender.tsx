@@ -6,6 +6,9 @@ import {
   TouchableOpacity,
   StatusBar,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -53,73 +56,85 @@ const RegisterGender: React.FC = () => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#EDEDED" />
 
-      <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-        <Text style={styles.backArrow}>←</Text>
-      </TouchableOpacity>
-
-      <View style={styles.progressRow}>
-        <View style={[styles.progressDot, styles.progressDotDone]} />
-        <View style={[styles.progressLine, styles.progressLineDone]} />
-        <View style={[styles.progressDot, styles.progressDotDone]} />
-        <View style={[styles.progressLine, styles.progressLineDone]} />
-        <View style={[styles.progressDot, styles.progressDotActive]} />
-      </View>
-
-      <View style={styles.bottomCard}>
-        <Text style={styles.title}>Select Gender</Text>
-        <Text style={styles.subtitle}>Choose the user's gender to continue.</Text>
-
-        <View style={styles.optionsRow}>
-          <TouchableOpacity
-            style={[
-              styles.optionCard,
-              gender === 'male' && styles.optionCardSelected,
-            ]}
-            onPress={() => setGender('male')}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.optionEmoji}>👨</Text>
-            <Text
-              style={[
-                styles.optionLabel,
-                gender === 'male' && styles.optionLabelSelected,
-              ]}
-            >
-              Male
-            </Text>
-            {gender === 'male' && <View style={styles.checkDot} />}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.optionCard,
-              gender === 'female' && styles.optionCardSelected,
-            ]}
-            onPress={() => setGender('female')}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.optionEmoji}>👩</Text>
-            <Text
-              style={[
-                styles.optionLabel,
-                gender === 'female' && styles.optionLabelSelected,
-              ]}
-            >
-              Female
-            </Text>
-            {gender === 'female' && <View style={styles.checkDot} />}
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity
-          style={[styles.button, !gender && styles.buttonDisabled]}
-          onPress={handleNext}
-          disabled={!gender}
-          activeOpacity={0.85}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        style={styles.flex}
+      >
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
         >
-          <Text style={styles.buttonText}>Next →</Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+            <Text style={styles.backArrow}>←</Text>
+          </TouchableOpacity>
+
+          <View style={styles.progressRow}>
+            <View style={[styles.progressDot, styles.progressDotDone]} />
+            <View style={[styles.progressLine, styles.progressLineDone]} />
+            <View style={[styles.progressDot, styles.progressDotDone]} />
+            <View style={[styles.progressLine, styles.progressLineDone]} />
+            <View style={[styles.progressDot, styles.progressDotActive]} />
+          </View>
+
+          <View style={styles.bottomCard}>
+            <Text style={styles.title}>Select Gender</Text>
+            <Text style={styles.subtitle}>Choose the user's gender to continue.</Text>
+
+            <View style={styles.optionsRow}>
+              <TouchableOpacity
+                style={[
+                  styles.optionCard,
+                  gender === 'male' && styles.optionCardSelected,
+                ]}
+                onPress={() => setGender('male')}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.optionEmoji}>👨</Text>
+                <Text
+                  style={[
+                    styles.optionLabel,
+                    gender === 'male' && styles.optionLabelSelected,
+                  ]}
+                >
+                  Male
+                </Text>
+                {gender === 'male' && <View style={styles.checkDot} />}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.optionCard,
+                  gender === 'female' && styles.optionCardSelected,
+                ]}
+                onPress={() => setGender('female')}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.optionEmoji}>👩</Text>
+                <Text
+                  style={[
+                    styles.optionLabel,
+                    gender === 'female' && styles.optionLabelSelected,
+                  ]}
+                >
+                  Female
+                </Text>
+                {gender === 'female' && <View style={styles.checkDot} />}
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.button, !gender && styles.buttonDisabled]}
+              onPress={handleNext}
+              disabled={!gender}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.buttonText}>Next →</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
@@ -130,6 +145,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#EDEDED',
+  },
+  flex: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   backBtn: {
     padding: 16,

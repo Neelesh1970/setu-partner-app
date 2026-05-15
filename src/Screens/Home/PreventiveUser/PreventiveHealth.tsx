@@ -34,7 +34,6 @@ import {
   logStoredSessionToConsole,
   savePreventivePatientId,
   getPreventivePatientId,
-  getAuthToken,
   getUserID,
 } from "../../../Utils/storage";
 
@@ -84,8 +83,6 @@ export default function PreventiveHealth({ navigation }: any) {
 
   const syncPreventivePatientFromApi = useCallback(async () => {
     try {
-      const token = await getAuthToken();
-      console.log("[PreventiveHealth] Token:", token ?? "—");
       const cached = await getPreventivePatientId();
       if (cached) {
         console.log("[PreventiveHealth] Patient ID (cached):", cached);
@@ -117,7 +114,7 @@ export default function PreventiveHealth({ navigation }: any) {
 
       void (async () => {
         await syncPreventivePatientFromApi();
-        await logStoredSessionToConsole("[PreventiveHealth]");
+        await logStoredSessionToConsole("[PreventiveHealth]", "preventiveHealth");
       })();
     }, [syncPreventivePatientFromApi])
   );
@@ -217,6 +214,7 @@ export default function PreventiveHealth({ navigation }: any) {
         id: item.id,
         label: item.device_name,
         imageUri: item.image_url,
+        isActive: item.is_active !== false,
         fullData: item,
       })),
     [rawDevices]
@@ -295,14 +293,28 @@ export default function PreventiveHealth({ navigation }: any) {
                         })
                       }
                     >
-                      {item.imageUri ? (
-                        <Image
-                          source={{ uri: item.imageUri }}
-                          style={styles.deviceImage}
-                        />
-                      ) : (
-                        <View style={[styles.deviceImage, styles.devicePlaceholder]} />
-                      )}
+                      <View style={styles.deviceImageWrapper}>
+                        {item.imageUri ? (
+                          <Image
+                            source={{ uri: item.imageUri }}
+                            style={styles.deviceImage}
+                          />
+                        ) : (
+                          <View style={[styles.deviceImage, styles.devicePlaceholder]} />
+                        )}
+                        <View
+                          style={[
+                            styles.deviceStatusBadge,
+                            item.isActive
+                              ? styles.deviceBadgeActive
+                              : styles.deviceBadgeInactive,
+                          ]}
+                        >
+                          <Text style={styles.deviceBadgeText}>
+                            {item.isActive ? "Active" : "Inactive"}
+                          </Text>
+                        </View>
+                      </View>
                       <Text style={styles.deviceLabel} numberOfLines={2}>
                         {item.label}
                       </Text>
@@ -463,14 +475,39 @@ const styles = StyleSheet.create({
     width: DEVICE_TILE_W,
     alignItems: "center",
   },
-  deviceImage: {
+  deviceImageWrapper: {
     width: "100%",
     aspectRatio: 1,
-    borderRadius: ms(12),
     marginBottom: vs(6),
+  },
+  deviceImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: ms(12),
+    backgroundColor: "#E2E8F0",
   },
   devicePlaceholder: {
     backgroundColor: "#E2E8F0",
+  },
+  deviceStatusBadge: {
+    position: "absolute",
+    top: ms(5),
+    right: ms(5),
+    paddingHorizontal: ms(5),
+    paddingVertical: vs(2),
+    borderRadius: ms(6),
+  },
+  deviceBadgeActive: {
+    backgroundColor: "#1C39BB",
+  },
+  deviceBadgeInactive: {
+    backgroundColor: "rgba(100, 116, 139, 0.88)",
+  },
+  deviceBadgeText: {
+    fontSize: s(8),
+    fontWeight: "700",
+    color: "#FFFFFF",
+    letterSpacing: 0.3,
   },
   deviceImagePlaceholder: {
     backgroundColor: "#E2E8F0",

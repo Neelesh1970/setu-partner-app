@@ -45,11 +45,16 @@ function isAuthOtpPublicPath(url: string | undefined): boolean {
 }
 
 /** Lab worker routes must use the OTP session pair; primary keys may hold a patient JWT after signup. */
-function isLabWorkerApiPath(url: string | undefined): boolean {
+export function isLabWorkerApiPath(url: string | undefined): boolean {
   if (!url) return false;
   const path = url.split('?')[0].replace(/\/$/, '');
   const base = path.startsWith('/') ? path.slice(1) : path;
-  return base.startsWith('lab/') || base === 'identity-verification';
+  return (
+    base.startsWith('lab/') ||
+    /** Same auth as lab/reports (member JWT cannot open lab report by booking). */
+    base.startsWith('reports/') ||
+    base === 'identity-verification'
+  );
 }
 
 axiosInstance.interceptors.request.use(
@@ -73,8 +78,6 @@ axiosInstance.interceptors.request.use(
       useLabWorkerSession && labAccess ? labAccess : accessToken;
     const refreshForRequest =
       useLabWorkerSession && labRefresh ? labRefresh : refreshToken;
-    console.log('[axios] access token', tokenForRequest ?? '(none)');
-    console.log('[axios] refresh token', refreshForRequest ?? '(none)');
     if (skipSessionHeaders) {
       return config;
     }
@@ -91,13 +94,16 @@ axiosInstance.interceptors.request.use(
   error => Promise.reject(error),
 );
 
-function toApiError(error: unknown): Error {
+function toApiError(error: unknown): Error & { status?: number; responseData?: unknown } {
   const e = error as { response?: { status?: number; data?: { message?: string } }; message?: string };
   const message =
     e?.response?.data?.message ?? e?.message ?? 'Something went wrong';
-  const apiError: Error & { status?: number } = new Error(message);
+  const apiError = new Error(message) as Error & { status?: number; responseData?: unknown };
   if (e?.response?.status) {
     apiError.status = e.response.status;
+  }
+  if (e?.response?.data !== undefined) {
+    apiError.responseData = e.response.data;
   }
   return apiError;
 }
@@ -199,8 +205,6 @@ axiosInstance.interceptors.response.use(
 
 
 // second base url interceptors
-
-// ================== DEBUG: AXIOS REQUEST ==================
 registerAxiosInstance.interceptors.request.use(
   async config => {
     const [accessToken, refreshToken] = await Promise.all([
@@ -216,46 +220,14 @@ registerAxiosInstance.interceptors.request.use(
       config.headers['x-refresh-token'] = refreshToken;
     }
 
-    console.log('==============================');
-    console.log('🟡 [AXIOS REQUEST START]');
-    console.log('➡️ FULL URL:', (config.baseURL ?? '') + (config.url ?? ''));
-    console.log('➡️ METHOD:', config.method);
-    console.log('➡️ HEADERS:', JSON.stringify(config.headers, null, 2));
-    console.log('➡️ BODY:', JSON.stringify(config.data, null, 2));
-    console.log('==============================');
-
     return config;
   },
-  error => {
-    console.log('🔴 [AXIOS REQUEST ERROR]', error);
-    return Promise.reject(error);
-  },
+  error => Promise.reject(error),
 );
 
-// ================== DEBUG: AXIOS RESPONSE ==================
 registerAxiosInstance.interceptors.response.use(
-  response => {
-    console.log('==============================');
-    console.log('🟢 [AXIOS RESPONSE SUCCESS]');
-    console.log('➡️ URL:', response.config.url);
-    console.log('➡️ STATUS:', response.status);
-    console.log('➡️ DATA:', JSON.stringify(response.data, null, 2));
-    console.log('==============================');
-
-    return response;
-  },
-  error => {
-    console.log('==============================');
-    console.log('🔴 [AXIOS RESPONSE ERROR]');
-    console.log('➡️ URL:', error?.config?.url);
-    console.log('➡️ STATUS:', error?.response?.status);
-    console.log('➡️ DATA:', JSON.stringify(error?.response?.data, null, 2));
-    console.log('➡️ MESSAGE:', error?.message);
-    console.log('➡️ FULL ERROR:', error);
-    console.log('==============================');
-
-    return Promise.reject(error);
-  },
+  response => response,
+  error => Promise.reject(error),
 );
 
 export default axiosInstance;

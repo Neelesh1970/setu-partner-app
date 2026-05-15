@@ -252,6 +252,9 @@ export type StoredSessionSnapshot = {
   registered_patient_auth: RegisteredPatientAuthSnapshot;
   /** Patient row UUID from GET /api/v1/patients for current Bearer token. */
   preventive_patient_id: string | null;
+  /** Copy kept when primary `auth_token` is swapped to a registered member (see `saveAuthData`). */
+  lab_worker_access_token: string | null;
+  lab_worker_refresh_token: string | null;
 };
 
 /**
@@ -360,27 +363,57 @@ export const getAllStoredSessionData = async (): Promise<StoredSessionSnapshot> 
     registered_patient,
     registered_patient_auth,
     preventive_patient_id: map[KEYS.PREVENTIVE_PATIENT_ID] ?? null,
+    lab_worker_access_token: map[KEYS.LAB_WORKER_ACCESS_TOKEN] ?? null,
+    lab_worker_refresh_token: map[KEYS.LAB_WORKER_REFRESH_TOKEN] ?? null,
   };
 };
 
-/** Logs AsyncStorage session with clear labels (partner vs Register New User patient). */
-export const logStoredSessionToConsole = async (tag = '[StoredSession]'): Promise<void> => {
+/** Where to log: full dual tokens on Preventive Health, or lab-worker copy only on lab home. */
+export type LogStoredSessionMode = 'preventiveHealth' | 'labWorkerHome';
+
+/** Logs AsyncStorage session with clear labels for register-user vs lab-worker JWT copies. */
+export const logStoredSessionToConsole = async (
+  tag = '[StoredSession]',
+  mode: LogStoredSessionMode = 'preventiveHealth',
+): Promise<void> => {
   const s = await getAllStoredSessionData();
-  console.log(`${tag} ========== Partner / vendor (primary login; e.g. Health Soldier) ==========`);
+
+  if (mode === 'labWorkerHome') {
+    console.log(
+      `${tag} ========== Lab worker (Health Soldier) JWT — stored copy for /lab/* (getLabWorkerAccessToken) ==========`,
+    );
+    console.log(
+      `${tag} Primary auth_token may be the registered member; lab routes should use this pair when it differs.`,
+    );
+    console.log(`${tag} lab_worker_access_token:`, s.lab_worker_access_token ?? '— (not set)');
+    console.log(`${tag} lab_worker_refresh_token:`, s.lab_worker_refresh_token ?? '— (not set)');
+    return;
+  }
+
+  console.log(
+    `${tag} ========== Registered user / member session (getAuthToken — preventive-health & member APIs) ==========`,
+  );
+  console.log(`${tag} auth_token:`, s.auth_token ?? '—');
+  console.log(`${tag} refresh_token:`, s.refresh_token ?? '—');
+
+  console.log(
+    `${tag} ========== Lab worker (Health Soldier) JWT — stored copy (getLabWorkerAccessToken) ==========`,
+  );
+  console.log(
+    `${tag} Same device after “Register New User”: primary keys often become the member; this copy keeps the lab worker pair.`,
+  );
+  console.log(`${tag} lab_worker_access_token:`, s.lab_worker_access_token ?? '— (not set)');
+  console.log(`${tag} lab_worker_refresh_token:`, s.lab_worker_refresh_token ?? '— (not set)');
+
+  console.log(`${tag} ========== Partner / vendor (primary login profile JSON) ==========`);
   console.log(`${tag} vendor_partner_user:`, JSON.stringify(s.vendor_partner_user, null, 2));
-  console.log(`${tag} ========== Registered patient (Home → Register New User) ==========`);
-  console.log(`${tag} registered_patient (profile):`, JSON.stringify(s.registered_patient, null, 2));
-  console.log(`${tag} registered_patient_auth (member JWT after plan payment):`, JSON.stringify(s.registered_patient_auth, null, 2));
-  console.log(`${tag} ========== Active session keys (what getAuthToken uses — often patient after signup) ==========`);
-  console.log(`${tag} auth_token:`, s.auth_token);
-  console.log(`${tag} refresh_token:`, s.refresh_token);
+  console.log(`${tag} ========== Registered patient profile (Home → Register New User) ==========`);
+  console.log(`${tag} registered_patient:`, JSON.stringify(s.registered_patient, null, 2));
+  console.log(`${tag} registered_patient_auth (explicit patient token slot):`, JSON.stringify(s.registered_patient_auth, null, 2));
   console.log(`${tag} user_id:`, s.user_id);
   console.log(`${tag} lab_user_id:`, s.lab_user_id);
   console.log(`${tag} primary_center_id:`, s.primary_center_id);
-  console.log(`${tag} User Id with token`, {
-    preventive_patient_id: s.preventive_patient_id,
-    auth_token: s.auth_token,
-  });
+  console.log(`${tag} preventive_patient_id:`, s.preventive_patient_id);
 };
 
 export const saveUserID = async (userID: string): Promise<void> => {

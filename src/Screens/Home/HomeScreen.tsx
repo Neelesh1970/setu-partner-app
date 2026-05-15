@@ -23,8 +23,9 @@ import {
 } from '../../Constants/homeMockData';
 import { fetchBackgroundImageUrl } from '../../Services/backgroundImageService';
 import { RootStackParamList } from '../../navigation/types';
-import { getAuthToken, getRefreshToken, getUser } from '../../Utils/storage';
+import { logStoredSessionToConsole } from '../../Utils/storage';
 import { pickBackendDeviceByTestName } from '../../Utils/pickBackendDeviceByTestName';
+import { applyLabIotPerformTestNavigation } from '../../Utils/labIotPerformTest';
 import axiosInstance from '../../api/axiosInstance';
 import {
   getLabWalletSummary,
@@ -54,8 +55,6 @@ const noop = () => {};
 
 const HOME_LAB_SECTION_PREVIEW = 2;
 const HOME_NO_TESTS_COPY = 'No tests Available . ';
-const BACKEND_PULSE_OXIMETER_DEVICE_ID = '1b9b9ae7-74e5-4056-a0c2-754e7be8288e';
-const BACKEND_PULSE_OXIMETER_DEVICE_NAME = 'Pulse Oxymeter';
 
 type HomeUpcomingPreviewItem = {
   key: string;
@@ -66,6 +65,10 @@ type HomeUpcomingPreviewItem = {
   testName: string;
   deviceId?: string | null;
   deviceName?: string | null;
+  /** Matching `booking_items.id` for `deviceId` — posted as `booking_item_id` for IOT results. */
+  bookingItemId?: string | null;
+  /** Top-level booking id forwarded to Remidio scanner for PDF generation. */
+  bookingId?: string | null;
   time: string;
   payment: string;
   performDisabled: boolean;
@@ -94,6 +97,7 @@ type HomeHeroBannerProps = {
 };
 
 const HomeHeroBanner: React.FC<HomeHeroBannerProps> = ({ imageUrl, loading }) => {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   if (loading) {
     return (
       <View style={[styles.hero, styles.heroLoading]}>
@@ -114,7 +118,9 @@ const HomeHeroBanner: React.FC<HomeHeroBannerProps> = ({ imageUrl, loading }) =>
           Track and complete patient visits from doorstep care
         </Text>
         <TouchableOpacity
-          onPress={noop}
+          onPress={() =>
+            navigation.navigate('TestActivity', { initialTab: 'upcoming' })
+          }
           style={[styles.heroButton, !onImage && styles.heroButtonOnPlain]}
           activeOpacity={0.85}
         >
@@ -484,17 +490,6 @@ const HomeScreen: React.FC = () => {
   const [deviceUnavailablePopupMessage, setDeviceUnavailablePopupMessage] =
     useState('');
 
-  const isPulseOximeterSupported = useCallback(
-    (deviceId?: string | null, deviceName?: string | null) => {
-      const normalizedName = (deviceName ?? '').trim().toLowerCase();
-      return (
-        deviceId === BACKEND_PULSE_OXIMETER_DEVICE_ID ||
-        normalizedName === BACKEND_PULSE_OXIMETER_DEVICE_NAME.toLowerCase()
-      );
-    },
-    [],
-  );
-
   const closeDeviceUnavailablePopup = useCallback(() => {
     setDeviceUnavailablePopupVisible(false);
   }, []);
@@ -597,8 +592,10 @@ const HomeScreen: React.FC = () => {
           ...pickBackendDeviceByTestName({
             deviceIds: p.device_ids ?? null,
             deviceNames: p.device_names ?? null,
+            bookingItemIds: p.booking_item_ids ?? null,
             testName: labPatientTestLabel(p),
           }),
+          bookingId: p.booking_id ?? null,
           time: formatLabSlotRange(p.slot_start_time, p.slot_end_time),
           payment: 'Paid',
           performDisabled: !canPerformTestNow(p),
@@ -663,8 +660,10 @@ const HomeScreen: React.FC = () => {
       ...pickBackendDeviceByTestName({
         deviceIds: p.device_ids ?? null,
         deviceNames: p.device_names ?? null,
+        bookingItemIds: p.booking_item_ids ?? null,
         testName: labPatientTestLabel(p),
       }),
+      bookingId: p.booking_id ?? null,
       time: formatLabSlotRange(p.slot_start_time, p.slot_end_time),
       payment: 'Paid',
       performDisabled: !canPerformTestNow(p),
@@ -699,29 +698,7 @@ const HomeScreen: React.FC = () => {
   }, [loadHomePatientPreviews]);
 
   useEffect(() => {
-    const logLabworkerSessionOnHome = async () => {
-      const [token, refreshToken, user] = await Promise.all([
-        getAuthToken(),
-        getRefreshToken(),
-        getUser(),
-      ]);
-      console.log(
-        'Labworker information',
-        JSON.stringify(
-          {
-            success: true,
-            message: 'Session from AsyncStorage (Home screen visible)',
-            provider: null,
-            user,
-            token,
-            refreshToken,
-          },
-          null,
-          2,
-        ),
-      );
-    };
-    logLabworkerSessionOnHome();
+    void logStoredSessionToConsole('[Home / Lab worker dashboard]', 'labWorkerHome');
   }, []);
 
   const balanceAmountText = formatHomeWalletMoney(
@@ -748,68 +725,41 @@ const HomeScreen: React.FC = () => {
     [navigation],
   );
 
-  /*
-   * Original (working) logic: always navigate without device context.
-   * Kept here (commented) to preserve reference.
-   */
-  // const goPerformTest = useCallback(() => {
-  //   navigation.navigate('Oxymeter');
-  // }, [navigation]);
-
-  const goPerformTestWithDevice = useCallback(
-    (deviceId?: string | null, deviceName?: string | null) => {
-      navigation.navigate('Oxymeter', { deviceId: deviceId ?? null, deviceName: deviceName ?? null });
-    },
-    [navigation],
-  );
-
   const goReports = useCallback(() => {
     navigation.navigate('Reports');
-  }, [navigation]);
-
-  const goScaleDevice = useCallback(() => {
-    // navigation.navigate('ScaleDevice');
-    navigation.navigate('RemidioQRScanner');
   }, [navigation]);
 
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.PRIMARY} />
-      <SafeAreaView style={styles.headerSafe}>
-        <PreventiveHealthHeader
-          showBack={false}
-          title={labProfileName}
-          avatarInitials={initialsFromName(labProfileName)}
-          avatarImageUrl={labProfileImageUrl}
-          onAvatarPress={() => navigation.navigate('Profile')}
-          rightSlot={
-            <View style={styles.headerActions}>
-              <TouchableOpacity
-                onPress={goScaleDevice}
-                style={styles.headerAction}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityRole="button"
-                accessibilityLabel="Power Max scale"
-              >
-                <Ionicons name="fitness-outline" size={24} color={COLORS.WHITE} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={goReports}
-                style={styles.headerAction}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityRole="button"
-                accessibilityLabel="Reports"
-              >
-                <Ionicons
-                  name="document-text-outline"
-                  size={24}
-                  color={COLORS.WHITE}
-                />
-              </TouchableOpacity>
-            </View>
-          }
-        />
-      </SafeAreaView>
+      <View style={styles.headerShell}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <PreventiveHealthHeader
+            showBack={false}
+            title={labProfileName}
+            avatarInitials={initialsFromName(labProfileName)}
+            avatarImageUrl={labProfileImageUrl}
+            onAvatarPress={() => navigation.navigate('Profile')}
+            rightSlot={
+              <View style={styles.headerActions}>
+                <TouchableOpacity
+                  onPress={goReports}
+                  style={styles.headerAction}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Reports"
+                >
+                  <Ionicons
+                    name="document-text-outline"
+                    size={24}
+                    color={COLORS.WHITE}
+                  />
+                </TouchableOpacity>
+              </View>
+            }
+          />
+        </SafeAreaView>
+      </View>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
@@ -859,8 +809,15 @@ const HomeScreen: React.FC = () => {
                 payment={item.payment}
                 onSeeDetails={() => goTestDetails(item.labPatientRowId, 'upcoming')}
                 onPerformTest={() => {
-                  if (isPulseOximeterSupported(item.deviceId, item.deviceName)) {
-                    goPerformTestWithDevice(item.deviceId, item.deviceName);
+                  if (
+                    applyLabIotPerformTestNavigation(
+                      navigation.navigate,
+                      item.deviceId,
+                      item.deviceName,
+                      item.bookingItemId,
+                      item.bookingId,
+                    )
+                  ) {
                     return;
                   }
                   const nameForMsg = item.deviceName ?? item.testName;
@@ -995,11 +952,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.MD,
     paddingBottom: SPACING.XL,
   },
-  headerSafe: {
+  headerShell: {
     backgroundColor: COLORS.PRIMARY,
     borderBottomLeftRadius: RADIUS_LG,
     borderBottomRightRadius: RADIUS_LG,
     overflow: 'hidden',
+  },
+  headerSafe: {
+    backgroundColor: COLORS.PRIMARY,
   },
   headerActions: {
     flexDirection: 'row',

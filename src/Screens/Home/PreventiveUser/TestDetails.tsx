@@ -29,13 +29,12 @@ import {
 } from './PreventiveHealthAPI';
 import CustomPopup from '../Components/CustomPopup';
 import { pickBackendDeviceByTestName } from '../../../Utils/pickBackendDeviceByTestName';
+import { applyLabIotPerformTestNavigation } from '../../../Utils/labIotPerformTest';
 
 const PRIMARY = COLORS.PRIMARY;
 const CARD_BORDER = '#E5E7EB';
 const LABEL_GRAY = '#6B7280';
 const TEXT_DARK = '#111827';
-const BACKEND_PULSE_OXIMETER_DEVICE_ID = '1b9b9ae7-74e5-4056-a0c2-754e7be8288e';
-const BACKEND_PULSE_OXIMETER_DEVICE_NAME = 'Pulse Oxymeter';
 
 type TestDetailsNav = NativeStackNavigationProp<RootStackParamList, 'TestDetails'>;
 
@@ -82,17 +81,6 @@ const TestDetails: React.FC = () => {
     setDeviceUnavailablePopupVisible(false);
   }, []);
 
-  const isPulseOximeterSupported = useCallback(
-    (deviceId?: string | null, deviceName?: string | null) => {
-      const normalizedName = (deviceName ?? '').trim().toLowerCase();
-      return (
-        deviceId === BACKEND_PULSE_OXIMETER_DEVICE_ID ||
-        normalizedName === BACKEND_PULSE_OXIMETER_DEVICE_NAME.toLowerCase()
-      );
-    },
-    [],
-  );
-
   const onContinue = useCallback(() => {
     if (!patient) return;
 
@@ -106,21 +94,26 @@ const TestDetails: React.FC = () => {
     const picked = pickBackendDeviceByTestName({
       deviceIds: patient.device_ids ?? null,
       deviceNames: patient.device_names ?? null,
+      bookingItemIds: patient.booking_item_ids ?? null,
       testName: testLabel,
     });
 
-    if (isPulseOximeterSupported(picked.deviceId, picked.deviceName)) {
-      navigation.navigate('Oxymeter', {
-        deviceId: picked.deviceId,
-        deviceName: picked.deviceName,
-      });
+    if (
+      applyLabIotPerformTestNavigation(
+        navigation.navigate,
+        picked.deviceId,
+        picked.deviceName,
+        picked.bookingItemId,
+        patient?.booking_id ?? null,
+      )
+    ) {
       return;
     }
 
     const nameForMsg = picked.deviceName ?? testLabel;
     setDeviceUnavailablePopupMessage(`No device available for this ${nameForMsg}`);
     setDeviceUnavailablePopupVisible(true);
-  }, [isPulseOximeterSupported, navigation, patient]);
+  }, [navigation, patient]);
 
   useEffect(() => {
     let cancelled = false;

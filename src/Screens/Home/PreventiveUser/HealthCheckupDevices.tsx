@@ -111,7 +111,9 @@ const HealthCheckupDevices = ({ navigation }: any) => {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
           }
-          renderItem={({ item, index }) => (
+          renderItem={({ item, index }) => {
+            const isActive = item.is_active !== false;
+            return (
             <TouchableOpacity
               style={[
                 styles.tile,
@@ -126,15 +128,32 @@ const HealthCheckupDevices = ({ navigation }: any) => {
                 })
               }
             >
-              <Image
-                source={{ uri: item.image_url }}
-                style={styles.tileImage}
-              />
+              <View style={styles.imageWrapper}>
+                {item.image_url ? (
+                  <Image
+                    source={{ uri: item.image_url }}
+                    style={styles.tileImage}
+                  />
+                ) : (
+                  <View style={styles.tilePlaceholder} />
+                )}
+                <View
+                  style={[
+                    styles.statusBadge,
+                    isActive ? styles.badgeActive : styles.badgeInactive,
+                  ]}
+                >
+                  <Text style={styles.badgeText}>
+                    {isActive ? "Active" : "Inactive"}
+                  </Text>
+                </View>
+              </View>
               <Text style={styles.tileLabel} numberOfLines={1}>
                 {item.device_name}
               </Text>
             </TouchableOpacity>
-          )}
+            );
+          }}
         />}
       </SafeAreaView>
     </>
@@ -164,11 +183,42 @@ const styles = StyleSheet.create({
   tile: {
     alignItems: "center",
   },
-  tileImage: {
+  imageWrapper: {
     width: "100%",
     aspectRatio: 1,
-    borderRadius: ms(12),
     marginBottom: vs(6),
+  },
+  tileImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: ms(12),
+    backgroundColor: "#E2E8F0",
+  },
+  tilePlaceholder: {
+    width: "100%",
+    height: "100%",
+    borderRadius: ms(12),
+    backgroundColor: "#E2E8F0",
+  },
+  statusBadge: {
+    position: "absolute",
+    top: ms(5),
+    right: ms(5),
+    paddingHorizontal: ms(5),
+    paddingVertical: vs(2),
+    borderRadius: ms(6),
+  },
+  badgeActive: {
+    backgroundColor: "#1C39BB",
+  },
+  badgeInactive: {
+    backgroundColor: "rgba(100, 116, 139, 0.88)",
+  },
+  badgeText: {
+    fontSize: s(8),
+    fontWeight: "700",
+    color: "#FFFFFF",
+    letterSpacing: 0.3,
   },
   tileLabel: {
     fontSize: s(11),

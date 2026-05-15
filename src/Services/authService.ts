@@ -209,7 +209,7 @@ export const verifyRegistrationOtpRegFlow = async (payload: {
 };
 
 export const resendNewUserOtpRegFlow = async (mobile: string): Promise<any> => {
-  const { data } = await registerAxiosInstance.post('/auth/register/resend-otp', { mobile });
+  const { data } = await registerAxiosInstance.post('/register/resend-otp', { mobile });
   return data;
 };
 
