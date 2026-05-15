@@ -7,8 +7,6 @@ import {
   TouchableOpacity,
   StatusBar,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -48,64 +46,67 @@ const RegisterName: React.FC = () => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#EDEDED" />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+
+      {/* Fixed top section — stays visible above the card at all times */}
+      <View style={styles.topSection}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Text style={styles.backArrow}>←</Text>
+        </TouchableOpacity>
+
+        <View style={styles.progressRow}>
+          <View style={[styles.progressDot, styles.progressDotActive]} />
+          <View style={styles.progressLine} />
+          <View style={styles.progressDot} />
+          <View style={styles.progressLine} />
+          <View style={styles.progressDot} />
+        </View>
+      </View>
+
+      {/* ScrollView handles keyboard — no KeyboardAvoidingView needed since
+          AndroidManifest already sets windowSoftInputMode="adjustResize" and
+          automaticallyAdjustKeyboardInsets covers iOS */}
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        automaticallyAdjustKeyboardInsets={true}
+        contentContainerStyle={styles.scrollContent}
         style={styles.flex}
       >
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-        >
-          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-            <Text style={styles.backArrow}>←</Text>
+        <View style={styles.bottomCard}>
+          <Text style={styles.title}>What's your name?</Text>
+          <Text style={styles.subtitle}>Enter the user's full name to continue.</Text>
+
+          <Text style={styles.label}>First Name</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Enter first name"
+            placeholderTextColor="#aaa"
+            value={firstName}
+            onChangeText={setFirstName}
+            autoCapitalize="words"
+            returnKeyType="next"
+          />
+
+          <Text style={[styles.label, styles.labelSpacing]}>Last Name</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Enter last name"
+            placeholderTextColor="#aaa"
+            value={lastName}
+            onChangeText={setLastName}
+            autoCapitalize="words"
+            returnKeyType="done"
+          />
+
+          <TouchableOpacity
+            style={styles.button}
+            onPress={handleNext}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.buttonText}>Next →</Text>
           </TouchableOpacity>
-
-          <View style={styles.progressRow}>
-            <View style={[styles.progressDot, styles.progressDotActive]} />
-            <View style={styles.progressLine} />
-            <View style={styles.progressDot} />
-            <View style={styles.progressLine} />
-            <View style={styles.progressDot} />
-          </View>
-
-          <View style={styles.bottomCard}>
-            <Text style={styles.title}>What's your name?</Text>
-            <Text style={styles.subtitle}>Enter the user's full name to continue.</Text>
-
-            <Text style={styles.label}>First Name</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter first name"
-              placeholderTextColor="#aaa"
-              value={firstName}
-              onChangeText={setFirstName}
-              autoCapitalize="words"
-              returnKeyType="next"
-            />
-
-            <Text style={[styles.label, styles.labelSpacing]}>Last Name</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter last name"
-              placeholderTextColor="#aaa"
-              value={lastName}
-              onChangeText={setLastName}
-              autoCapitalize="words"
-              returnKeyType="done"
-            />
-
-            <TouchableOpacity
-              style={styles.button}
-              onPress={handleNext}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.buttonText}>Next →</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
@@ -119,6 +120,9 @@ const styles = StyleSheet.create({
   },
   flex: {
     flex: 1,
+  },
+  topSection: {
+    paddingBottom: 8,
   },
   backBtn: {
     padding: 16,
@@ -153,7 +157,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   bottomCard: {
-    marginTop: 'auto',
+    flex: 1,
     backgroundColor: '#fff',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
