@@ -1,21 +1,34 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
+  Image,
   Linking,
   Platform,
-  ScrollView,
   StatusBar,
   Text,
   TouchableOpacity,
   useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  useFocusEffect,
+  useNavigation,
+  useRoute,
+  type RouteProp,
+} from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { requestBlePermissionsAndroid } from '../../Utils/requestBlePermissionsAndroid';
-import { BleManager } from 'react-native-ble-plx';
+import { resolveLabIotPerformTestScreen } from '../../Utils/labIotPerformTest';
+import PreventiveHealthHeader from '../Home/PreventiveUser/PreventiveHealthHeader';
+import pulseOxymeterPng from '../../assets/iot/pulse_oxymeter.png';
+import { COLORS, SPACING } from '../../Constants/theme';
+import { BleError, BleErrorCode, BleManager } from 'react-native-ble-plx';
 import type { Device, Subscription } from 'react-native-ble-plx';
 import styles from './Oxymeter.styles';
 
@@ -69,7 +82,7 @@ const BASE_DEVICES: DashboardDevice[] = [
     detail:
       'Continuous oximetry with automatic data streaming to the Setu Device dashboard.',
   },
-  {
+  /* {
     id: 'setu-thermo',
     name: 'Setu Skin Thermometer',
     type: 'Thermometer',
@@ -88,128 +101,398 @@ const BASE_DEVICES: DashboardDevice[] = [
     subtitle: 'Accelerometer + pulse patch',
     detail:
       'Tracks motion patterns, heart rate, and sends summaries every 15 minutes.',
-  },
+  }, */
 ];
 
-const BACKEND_PULSE_OXIMETER_DEVICE_ID = '1b9b9ae7-74e5-4056-a0c2-754e7be8288e';
-const BACKEND_PULSE_OXIMETER_DEVICE_NAME = 'Pulse Oxymeter';
+const OX_LIVE_ICON_BLACK = '#0a0a0a';
 
-type PulseOximeterScreenProps = {
-  oxygen: number | null;
-  bpm: number | null;
-  connectionStatus: string;
-  statusLog: string[];
+/** Harmonics with period P so y(x+P) === y(x) for seamless horizontal tiling. */
+type OxHarm = { n: number; a: number; phi: number };
+
+const OX_LAYER_HARMONICS: OxHarm[][] = [
+  [
+    { n: 1, a: 0.4, phi: 0.12 },
+    { n: 2, a: 0.26, phi: 1.02 },
+    { n: 3, a: 0.17, phi: 1.95 },
+    { n: 4, a: 0.12, phi: 0.55 },
+    { n: 5, a: 0.08, phi: 1.78 },
+    { n: 6, a: 0.05, phi: 2.65 },
+  ],
+  [
+    { n: 1, a: 0.34, phi: 1.18 },
+    { n: 2, a: 0.22, phi: 0.28 },
+    { n: 3, a: 0.19, phi: 1.48 },
+    { n: 4, a: 0.11, phi: 2.25 },
+    { n: 5, a: 0.09, phi: 0.88 },
+    { n: 7, a: 0.06, phi: 1.62 },
+  ],
+  [
+    { n: 1, a: 0.24, phi: 2.05 },
+    { n: 2, a: 0.2, phi: 0.95 },
+    { n: 3, a: 0.14, phi: 0.38 },
+    { n: 4, a: 0.11, phi: 2.48 },
+    { n: 6, a: 0.08, phi: 1.22 },
+    { n: 8, a: 0.05, phi: 0.15 },
+  ],
+];
+
+function oxLiveWaveSurfaceY(
+  x: number,
+  height: number,
+  period: number,
+  layer: 0 | 1 | 2,
+): number {
+  const P = Math.max(1, period);
+  const specs = OX_LAYER_HARMONICS[layer];
+  let v = 0;
+  for (const { n, a, phi } of specs) {
+    v += a * Math.sin((2 * Math.PI * n * x) / P + phi);
+  }
+  const w = (2 * Math.PI * x) / P;
+  const env = 1 + 0.11 * Math.sin(w + 0.25) + 0.07 * Math.sin(2 * w + 0.9);
+  const base = height * 0.48;
+  const amp = height * 0.24;
+  const y = base + amp * v * env;
+  return Math.min(height * 0.94, Math.max(height * 0.14, y));
+}
+
+function buildOxLiveLayerFillRatios(
+  segmentCount: number,
+  period: number,
+  waveHeight: number,
+  layer: 0 | 1 | 2,
+): number[] {
+  return Array.from({ length: segmentCount }, (_, i) => {
+    const x = ((i + 0.5) / segmentCount) * period;
+    const ySurf = oxLiveWaveSurfaceY(x, waveHeight, period, layer);
+    const fillH = waveHeight - ySurf;
+    return Math.max(0.05, Math.min(1, fillH / waveHeight));
+  });
+}
+
+/** Back = deep royal; mid/front lighter with lower opacity so overlaps read like the reference. */
+const OX_WAVE_FILLS: { layer: 0 | 1 | 2; fill: string; opacity: number }[] = [
+  { layer: 0, fill: '#0c2a66', opacity: 0.94 },
+  { layer: 1, fill: '#2f6ff0', opacity: 0.55 },
+  { layer: 2, fill: '#bfe6ff', opacity: 0.48 },
+];
+
+const OX_RASTER_SEGMENTS = 96;
+
+type OxLiveRasterWaveProps = {
+  period: number;
+  waveHeight: number;
 };
 
-const PulseOximeterScreen: React.FC<PulseOximeterScreenProps> = ({
-  oxygen,
-  bpm,
-  connectionStatus,
-  statusLog,
-}) => {
-  const { width } = useWindowDimensions();
-  const isStackedMetrics = width < 420;
-  const metricLayoutStyle = isStackedMetrics ? styles.oximeterMetricsStacked : null;
-  const secondMetricSpacing = isStackedMetrics ? styles.oximeterMetricStackedSpacing : null;
+const OxLiveRasterWave: React.FC<OxLiveRasterWaveProps> = ({ period, waveHeight }) => {
+  const scroll = useRef(new Animated.Value(0)).current;
+  const bobL0 = useRef(new Animated.Value(0)).current;
+  const bobL1 = useRef(new Animated.Value(0)).current;
+  const bobL2 = useRef(new Animated.Value(0)).current;
+  const p = Math.max(80, Math.floor(period));
+
+  const layerRatios = useMemo(
+    () =>
+      OX_WAVE_FILLS.map(({ layer }) =>
+        buildOxLiveLayerFillRatios(OX_RASTER_SEGMENTS, p, waveHeight, layer),
+      ),
+    [p, waveHeight],
+  );
+
+  const ty0 = bobL0.interpolate({
+    inputRange: [0, 1],
+    outputRange: [5, -10],
+  });
+  const ty1 = bobL1.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-7, 8],
+  });
+  const ty2 = bobL2.interpolate({
+    inputRange: [0, 1],
+    outputRange: [8, -6],
+  });
+  const layerBobY = [ty0, ty1, ty2];
+
+  useEffect(() => {
+    scroll.setValue(0);
+    const scrollLoop = Animated.loop(
+      Animated.timing(scroll, {
+        toValue: 1,
+        duration: 10000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+
+    const makeBob = (
+      v: Animated.Value,
+      upMs: number,
+      downMs: number,
+      delay = 0,
+    ) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(v, {
+            toValue: 1,
+            duration: upMs,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+          Animated.timing(v, {
+            toValue: 0,
+            duration: downMs,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+
+    const b0 = makeBob(bobL0, 1960, 2340, 0);
+    const b1 = makeBob(bobL1, 2680, 1890, 120);
+    const b2 = makeBob(bobL2, 1540, 2920, 280);
+
+    scrollLoop.start();
+    b0.start();
+    b1.start();
+    b2.start();
+    return () => {
+      scrollLoop.stop();
+      b0.stop();
+      b1.stop();
+      b2.stop();
+    };
+  }, [scroll, bobL0, bobL1, bobL2, p]);
+
+  const translateX = scroll.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -p],
+  });
+
+  const renderTile = (tileKey: string) => (
+    <View key={tileKey} style={[styles.oxLiveRasterTile, { width: p, height: waveHeight }]}>
+      {OX_WAVE_FILLS.map(({ layer, fill, opacity }, li) => (
+        <Animated.View
+          key={`${tileKey}-${layer}`}
+          style={[
+            styles.oxLiveRasterLayer,
+            { height: waveHeight, transform: [{ translateY: layerBobY[li] }] },
+          ]}
+        >
+          <View style={styles.oxLiveRasterBarRow}>
+            {layerRatios[li].map((ratio, i) => (
+              <View
+                key={`${tileKey}-${layer}-${i}`}
+                style={[
+                  styles.oxLiveRasterBar,
+                  styles.oxLiveRasterBarOverlap,
+                  {
+                    flex: 1,
+                    height: `${Math.round(ratio * 1000) / 10}%`,
+                    backgroundColor: fill,
+                    opacity,
+                  },
+                ]}
+              />
+            ))}
+          </View>
+        </Animated.View>
+      ))}
+    </View>
+  );
 
   return (
-    <View style={styles.oximeterScreenBase}>
-      <View
+    <View style={[styles.oxLiveLightWaveClip, { height: waveHeight }]}>
+      <Animated.View
         style={[
-          styles.oximeterScreen,
+          styles.oxLiveLightWaveScroll,
           {
-            paddingHorizontal: Math.min(40, Math.max(16, width * 0.05)),
-            paddingVertical: isStackedMetrics ? 18 : 22,
+            width: p * 2,
+            height: waveHeight,
+            flexDirection: 'row',
+            transform: [{ translateX }],
           },
         ]}
       >
-        <View style={styles.oximeterHero}>
-          <Text style={styles.oximeterLabel}>Pulse Oximeter</Text>
-          <View style={styles.oximeterDeviceWrap}>
-            <View style={styles.oximeterDeviceShell}>
-              <View style={styles.oximeterWave} />
-            </View>
-          </View>
-        </View>
-
-        <View style={[styles.oximeterMetrics, metricLayoutStyle]}>
-          <View style={[styles.oximeterMetricCard, styles.oximeterMetricPrimary]}>
-            <Text style={styles.oximeterMetricLabel}>SpO₂</Text>
-            <Text style={styles.oximeterMetricValue}>
-              {oxygen !== null ? `${oxygen}%` : '--'}
-            </Text>
-            <Text style={styles.oximeterMetricUnit}>
-              {oxygen !== null ? 'saturation' : 'waiting data'}
-            </Text>
-          </View>
-          <View style={[styles.oximeterMetricCard, secondMetricSpacing]}>
-            <Text style={styles.oximeterMetricLabel}>PR bpm</Text>
-            <Text style={styles.oximeterMetricValue}>{bpm !== null ? `${bpm}` : '--'}</Text>
-            <Text style={styles.oximeterMetricUnit}>
-              {bpm !== null ? 'pulse rate' : 'waiting data'}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.statusCard}>
-          <Text style={styles.statusLabel}>Connection status</Text>
-          <Text style={styles.statusValue}>{connectionStatus}</Text>
-          {statusLog.map((item, index) => (
-            <Text key={`${item}-${index}`} style={styles.statusLine}>
-              • {item}
-            </Text>
-          ))}
-        </View>
-      </View>
+        {renderTile('a')}
+        {renderTile('b')}
+      </Animated.View>
     </View>
   );
 };
 
-type PulseOximeterSetupScreenProps = {
+type OxLiveMetricsWaveCardProps = {
+  oxygen: number | null;
+  bpm: number | null;
+  compact: boolean;
+  sidePad: number;
+};
+
+const OxLiveMetricsWaveCard: React.FC<OxLiveMetricsWaveCardProps> = ({
+  oxygen,
+  bpm,
+  compact,
+  sidePad,
+}) => {
+  const { width: windowWidth } = useWindowDimensions();
+  const [wavePeriod, setWavePeriod] = useState(() =>
+    Math.max(100, Math.floor(windowWidth - sidePad * 2 - 4)),
+  );
+  const iconSize = compact ? 20 : 24;
+  const waveH = compact ? 72 : 92;
+
+  return (
+    <View
+      style={[
+        styles.oxLiveMetricsCard,
+        { marginHorizontal: sidePad },
+        compact && styles.oxLiveMetricsCardCompact,
+      ]}
+      onLayout={e => {
+        const w = Math.floor(e.nativeEvent.layout.width);
+        if (w > 40) setWavePeriod(w);
+      }}
+    >
+      <View style={[styles.oxLiveLightTop, compact && styles.oxLiveLightTopCompact]}>
+        <View style={[styles.oxLiveMetricsRow, compact && styles.oxLiveMetricsRowCompact]}>
+          <View style={[styles.oxLiveMetricHalf, compact && styles.oxLiveMetricHalfCompact]}>
+            <View style={styles.oxLiveMetricIconRow}>
+              <MaterialCommunityIcons
+                name="cloud-outline"
+                size={iconSize}
+                color={OX_LIVE_ICON_BLACK}
+                style={styles.oxLiveMetricIconSpacing}
+              />
+              <Text style={styles.oxLiveLightLabel}>SpO₂%</Text>
+            </View>
+            <Text style={[styles.oxLiveLightValue, compact && styles.oxLiveLightValueCompact]}>
+              {oxygen !== null ? `${oxygen}` : '—'}
+            </Text>
+          </View>
+          <View style={styles.oxLiveLightDivider} />
+          <View style={[styles.oxLiveMetricHalf, compact && styles.oxLiveMetricHalfCompact]}>
+            <View style={styles.oxLiveMetricIconRow}>
+              <MaterialCommunityIcons
+                name="heart-pulse"
+                size={iconSize}
+                color={OX_LIVE_ICON_BLACK}
+                style={styles.oxLiveMetricIconSpacing}
+              />
+              <Text style={styles.oxLiveLightLabel}>PR bpm</Text>
+            </View>
+            <Text style={[styles.oxLiveLightValue, compact && styles.oxLiveLightValueCompact]}>
+              {bpm !== null ? `${bpm}` : '—'}
+            </Text>
+          </View>
+        </View>
+      </View>
+      <OxLiveRasterWave period={wavePeriod} waveHeight={waveH} />
+    </View>
+  );
+};
+
+type PulseOximeterPairScreenProps = {
   onConnect: () => void;
   isConnecting: boolean;
 };
 
-const PulseOximeterSetupScreen: React.FC<PulseOximeterSetupScreenProps> = ({
+const PulseOximeterPairScreen: React.FC<PulseOximeterPairScreenProps> = ({
   onConnect,
   isConnecting,
 }) => {
-  const { width } = useWindowDimensions();
-  const cardPadding = width < 360 ? 18 : 22;
+  const { width, height } = useWindowDimensions();
+  const sidePad = Math.min(24, Math.max(16, width * 0.04));
+  const compact = height < 640;
 
   return (
-    <View style={styles.oximeterScreenBase}>
-      <View style={[styles.oximeterSetupCard, { padding: cardPadding }]}>
-        <View style={styles.oximeterSetupHeader}>
-          <Text style={styles.oximeterLabel}>Pulse Oximeter</Text>
-          <View style={styles.oximeterDeviceWrap}>
-            <View style={styles.oximeterDeviceShell}>
-              <View style={styles.oximeterWave} />
-            </View>
-          </View>
-        </View>
-        <View style={styles.oximeterBody}>
-          <Text style={styles.oximeterTitle}>Pair Device</Text>
-          <Text style={styles.oximeterCopy}>
-            We detected your pulse oximeter nearby. Make sure it is powered on and within Bluetooth
-            range before tapping Connect.
+    <View style={styles.oxLightRoot}>
+      <View style={[styles.oxLightImageWrap, { paddingHorizontal: sidePad }]}>
+        <Image
+          source={pulseOxymeterPng}
+          style={styles.oxLightHeroImage}
+          resizeMode="contain"
+        />
+      </View>
+
+      <View
+        style={[
+          styles.oxLightBottomCard,
+          { marginHorizontal: sidePad },
+          compact && styles.oxLightBottomCardCompact,
+        ]}
+      >
+        <Text style={[styles.oxLightCardTitle, compact && styles.oxLightCardTitleCompact]}>
+          Pair Device
+        </Text>
+        <Text
+          style={[styles.oxLightCardCopy, compact && styles.oxLightCardCopyCompact]}
+          numberOfLines={compact ? 4 : undefined}
+        >
+          We have detected your pulse oximeter. Make sure it is turned on and within range, then
+          tap Connect to pair your device and start your health test.
+        </Text>
+        <TouchableOpacity
+          style={[styles.oxLightPrimaryBtn, isConnecting && styles.oxLightPrimaryBtnDisabled]}
+          onPress={onConnect}
+          disabled={isConnecting}
+          activeOpacity={0.88}
+        >
+          <Text style={styles.oxLightPrimaryBtnText}>
+            {isConnecting ? 'Requesting Bluetooth…' : 'Connect'}
           </Text>
-          <TouchableOpacity
-            style={[styles.oximeterConnectButton, isConnecting && styles.connectButtonDisabled]}
-            onPress={onConnect}
-            disabled={isConnecting}
-          >
-            <Text style={styles.oximeterConnectButtonText}>
-              {isConnecting ? 'Requesting Bluetooth…' : 'Connect'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+        </TouchableOpacity>
       </View>
     </View>
   );
 };
 
-type OxymeterNav = NativeStackNavigationProp<RootStackParamList>;
+type PulseOximeterLiveScreenProps = {
+  oxygen: number | null;
+  bpm: number | null;
+  connectionStatus: string;
+  isConnecting: boolean;
+};
+
+const PulseOximeterLiveScreen: React.FC<PulseOximeterLiveScreenProps> = ({
+  oxygen,
+  bpm,
+  connectionStatus,
+  isConnecting,
+}) => {
+  const { width, height } = useWindowDimensions();
+  const sidePad = Math.min(24, Math.max(16, width * 0.04));
+  const compact = height < 640;
+  const showErrorHint =
+    !isConnecting &&
+    (connectionStatus.includes('❌') ||
+      connectionStatus.toLowerCase().includes('failed') ||
+      connectionStatus.toLowerCase().includes('permission'));
+
+  return (
+    <View style={styles.oxLightRoot}>
+      {isConnecting ? (
+        <View style={styles.oxLiveCenter}>
+          <ActivityIndicator size="large" color={COLORS.PRIMARY} />
+          <Text style={styles.oxLiveConnectingText}>{connectionStatus}</Text>
+        </View>
+      ) : (
+        <View style={styles.oxLiveLiveCenterWrap}>
+          <View style={styles.oxLiveLiveCenterInner}>
+            <OxLiveMetricsWaveCard oxygen={oxygen} bpm={bpm} compact={compact} sidePad={sidePad} />
+            <View style={[styles.oxLiveStatusFooter, compact && styles.oxLiveStatusFooterCompact]}>
+              <Text
+                style={[styles.oxLiveStatusText, showErrorHint && styles.oxLiveStatusTextError]}
+                numberOfLines={3}
+              >
+                {connectionStatus}
+              </Text>
+            </View>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+};
 
 const OXY_SERVICES_FILTER = [
   'f000ffc0-0451-4000-b000-000000000000',
@@ -346,8 +629,61 @@ async function scanForOximeterDevice(manager: BleManager): Promise<Device> {
   }
 }
 
+const OX_BLE_DISCONNECT_HINT =
+  'Oximeter disconnected. Keep it close, powered on, finger in the sensor, then tap Connect again.';
+
+/** Maps BleError / generic errors to UI copy; disconnects are expected sometimes — log as warn. */
+function resolveNativeBleUserFeedback(error: unknown): {
+  status: string;
+  logDetail: string;
+  level: 'warn' | 'error';
+} {
+  if (error instanceof BleError) {
+    switch (error.errorCode) {
+      case BleErrorCode.DeviceDisconnected:
+      case BleErrorCode.DeviceNotConnected:
+      case BleErrorCode.OperationTimedOut:
+        return {
+          status: `🔌 ${OX_BLE_DISCONNECT_HINT}`,
+          logDetail: error.message,
+          level: 'warn',
+        };
+      case BleErrorCode.BluetoothPoweredOff:
+        return {
+          status: '🔌 Bluetooth is off. Turn it on and try again.',
+          logDetail: error.message,
+          level: 'warn',
+        };
+      case BleErrorCode.DeviceConnectionFailed:
+        return {
+          status: '❌ Could not connect. Move closer to the oximeter and try again.',
+          logDetail: error.message,
+          level: 'warn',
+        };
+      default:
+        break;
+    }
+  }
+  const msg = error instanceof Error ? error.message : String(error);
+  const lower = msg.toLowerCase();
+  if (lower.includes('disconnect') || lower.includes('was disconnected')) {
+    return {
+      status: `🔌 ${OX_BLE_DISCONNECT_HINT}`,
+      logDetail: msg,
+      level: 'warn',
+    };
+  }
+  if (lower.includes('bluetooth is off')) {
+    return { status: msg, logDetail: msg, level: 'warn' };
+  }
+  return {
+    status: '❌ Connection failed.',
+    logDetail: msg,
+    level: 'error',
+  };
+}
+
 const Oxymeter: React.FC = () => {
-  const navigation = useNavigation<OxymeterNav>();
   const route = useRoute<RouteProp<RootStackParamList, 'Oxymeter'>>();
   const [devices, setDevices] = useState<DashboardDevice[]>(BASE_DEVICES);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>(BASE_DEVICES[0].id);
@@ -525,7 +861,18 @@ const Oxymeter: React.FC = () => {
           for (const ch of characteristics) {
             if (!(ch.isNotifiable || ch.isIndicatable)) continue;
             nativeMonitorSubRef.current = ch.monitor((error, c) => {
-              if (error || !c?.value) return;
+              if (error) {
+                const fb = resolveNativeBleUserFeedback(error);
+                setConnectionStatus(fb.status);
+                appendLog(`Stream: ${fb.logDetail}`);
+                if (fb.level === 'error') {
+                  console.error('Oximeter BLE monitor', error);
+                } else {
+                  console.warn('Oximeter BLE monitor', error);
+                }
+                return;
+              }
+              if (!c?.value) return;
               applyOximeterPayload(base64ToByteArray(c.value));
             });
             subscribed = true;
@@ -541,14 +888,13 @@ const Oxymeter: React.FC = () => {
           await disconnectNativeBle();
         }
       } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'unknown error';
-        if (msg.toLowerCase().includes('bluetooth is off')) {
-          setConnectionStatus(msg);
-          appendLog(msg);
-        } else {
+        const fb = resolveNativeBleUserFeedback(error);
+        setConnectionStatus(fb.status);
+        appendLog(fb.logDetail);
+        if (fb.level === 'error') {
           console.error('Native BLE error', error);
-          setConnectionStatus('❌ Connection failed.');
-          appendLog(`Error: ${msg}`);
+        } else {
+          console.warn('Native BLE error', error);
         }
         await disconnectNativeBle();
       } finally {
@@ -704,7 +1050,25 @@ const Oxymeter: React.FC = () => {
     appendLog('Added a placeholder device to the dashboard.');
   }, [devices.length, appendLog]);
 
-  const canGoBack = navigation.canGoBack();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'Oxymeter'>>();
+  const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const bodyBottomPad = Math.max(insets.bottom, SPACING.SM);
+  const dashboardCompact = windowHeight < 700;
+
+  const headerTitle = !activeDevice
+    ? 'Setu Device'
+    : activeDevice.id === 'setu-oximeter'
+      ? 'Pulse Oximeter'
+      : activeDevice.name;
+
+  const handleHeaderBack = useCallback(() => {
+    if (activeDevice) {
+      closeDeviceScreen();
+    } else {
+      navigation.goBack();
+    }
+  }, [activeDevice, closeDeviceScreen, navigation]);
 
   useEffect(() => {
     const params = route.params;
@@ -714,13 +1078,7 @@ const Oxymeter: React.FC = () => {
     // If navigation didn't provide device context, keep original dashboard behavior.
     if (!deviceIdFromBackend && !deviceNameFromBackend) return;
 
-    // Map backend device -> internal supported integration.
-    const normalizedName = (deviceNameFromBackend ?? '').trim().toLowerCase();
-    const isPulseOximeter =
-      deviceIdFromBackend === BACKEND_PULSE_OXIMETER_DEVICE_ID ||
-      normalizedName === BACKEND_PULSE_OXIMETER_DEVICE_NAME.toLowerCase();
-
-    if (isPulseOximeter) {
+    if (resolveLabIotPerformTestScreen(deviceIdFromBackend, deviceNameFromBackend) === 'Oxymeter') {
       // Open the main Oxymeter dashboard (device cards). Do not auto-open setup/connect.
       setSelectedDeviceId('setu-oximeter');
       return;
@@ -728,141 +1086,163 @@ const Oxymeter: React.FC = () => {
   }, [route.params]);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <StatusBar barStyle="light-content" backgroundColor="#0c162a" />
-      {canGoBack ? (
-        <TouchableOpacity style={styles.stackBackRow} onPress={() => navigation.goBack()}>
-          <Text style={styles.stackBackText}>← Back</Text>
-        </TouchableOpacity>
-      ) : null}
-      <ScrollView contentContainerStyle={styles.scrollArea}>
-        {!activeDevice && (
-          <>
-            <View style={styles.hero}>
-              <Text style={styles.heroTitle}>Setu Device</Text>
-              <Text style={styles.heroSubtitle}>
-                Central dashboard for every Setu-enabled sensor. Tap a device to open its individual
-                screen.
-              </Text>
-              <TouchableOpacity style={styles.ctaButton} onPress={addDevice}>
-                <Text style={styles.ctaButtonText}>Add new device</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.sectionHeader}>
-              <View>
-                <Text style={styles.sectionTitle}>All devices</Text>
-                <Text style={styles.sectionTagline}>
-                  Each card opens an individual screen with a live feed.
+    <View style={styles.root}>
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.PRIMARY} />
+      <View style={styles.headerShell}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <PreventiveHealthHeader title={headerTitle} showBack onBackPress={handleHeaderBack} />
+        </SafeAreaView>
+      </View>
+      <View
+        style={[
+          styles.bodyFlex,
+          styles.bodySurface,
+          { paddingBottom: bodyBottomPad },
+        ]}
+      >
+        <View style={styles.bodyInner}>
+          {!activeDevice && (
+            <View style={styles.dashboardColumn}>
+              <View style={[styles.hero, dashboardCompact && styles.heroCompact]}>
+                <Text style={[styles.heroTitle, dashboardCompact && styles.heroTitleCompact]}>
+                  Setu Device
                 </Text>
-              </View>
-              <Text style={styles.sectionAction}>Total {devices.length}</Text>
-            </View>
-
-            <View style={styles.deviceList}>
-              {devices.map(device => (
-                <TouchableOpacity
-                  key={device.id}
-                  style={[
-                    styles.deviceCard,
-                    selectedDeviceId === device.id && styles.deviceCardActive,
-                  ]}
-                  onPress={() => openDeviceScreen(device.id, device.name)}
+                <Text
+                  style={[styles.heroSubtitle, dashboardCompact && styles.heroSubtitleCompact]}
+                  numberOfLines={dashboardCompact ? 3 : undefined}
                 >
-                  <Text style={styles.deviceIcon}>{device.icon}</Text>
-                  <View style={styles.deviceCopy}>
-                    <Text style={styles.deviceName}>{device.name}</Text>
-                    <Text style={styles.deviceSubtitle}>{device.subtitle}</Text>
-                  </View>
-                  <View style={styles.deviceBadge}>
-                    <Text style={styles.deviceBadgeText}>{device.badge}</Text>
-                  </View>
+                  Central dashboard for every Setu-enabled sensor. Tap a device to open its
+                  individual screen.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.ctaButton, dashboardCompact && styles.ctaButtonCompact]}
+                  onPress={addDevice}
+                >
+                  <Text style={styles.ctaButtonText}>Add new device</Text>
                 </TouchableOpacity>
-              ))}
-            </View>
-          </>
-        )}
+              </View>
 
-        {activeDevice && (
-          <>
-            <View style={styles.deviceScreenHeader}>
-              <TouchableOpacity onPress={closeDeviceScreen} style={styles.backButton}>
-                <Text style={styles.backButtonText}>← Back</Text>
-              </TouchableOpacity>
-              <Text style={styles.deviceScreenTitle}>{activeDevice.name}</Text>
-              <View style={styles.backButtonPlaceholder} />
-            </View>
-
-            {activeDevice.id === 'setu-oximeter' ? (
-              showLiveOximeterScreen ? (
-                <PulseOximeterScreen
-                  oxygen={oxygen}
-                  bpm={bpm}
-                  connectionStatus={connectionStatus}
-                  statusLog={statusLog}
-                />
-              ) : (
-                <PulseOximeterSetupScreen
-                  isConnecting={isConnecting}
-                  onConnect={connectToSelectedDevice}
-                />
-              )
-            ) : (
-              <View style={styles.deviceDetail}>
-                <View style={styles.deviceDetailHeading}>
-                  <Text style={styles.deviceDetailTitle}>{activeDevice.name}</Text>
-                  <Text style={styles.deviceDetailType}>{activeDevice.type}</Text>
-                </View>
-                <Text style={styles.deviceDetailBody}>{activeDevice.detail}</Text>
-                <View style={styles.metrics}>
-                  <View style={styles.metricCard}>
-                    <Text style={styles.metricLabel}>SpO₂</Text>
-                    <Text style={styles.metricValue}>
-                      {oxygen !== null ? `${oxygen}%` : '--'}
-                    </Text>
-                  </View>
-                  <View style={styles.metricCard}>
-                    <Text style={styles.metricLabel}>Pulse</Text>
-                    <Text style={styles.metricValue}>
-                      {bpm !== null ? `${bpm} bpm` : '--'}
-                    </Text>
-                  </View>
-                  <View style={styles.metricCard}>
-                    <Text style={styles.metricLabel}>Last packet</Text>
-                    <Text style={styles.metricValue}>
-                      {rawData.length ? `${rawData.length} bytes` : 'n/a'}
-                    </Text>
-                  </View>
-                </View>
-                <TouchableOpacity
-                  style={[styles.connectButton, isConnecting && styles.connectButtonDisabled]}
-                  onPress={connectToSelectedDevice}
-                  disabled={isConnecting}
-                >
-                  <Text style={styles.connectButtonText}>
-                    {isConnecting ? 'Waiting for permission…' : 'Connect & start scan'}
+              <View style={[styles.sectionHeader, dashboardCompact && styles.sectionHeaderCompact]}>
+                <View style={styles.sectionHeaderTextWrap}>
+                  <Text style={styles.sectionTitle}>All devices</Text>
+                  <Text
+                    style={[styles.sectionTagline, dashboardCompact && styles.sectionTaglineCompact]}
+                    numberOfLines={2}
+                  >
+                    Each card opens an individual screen with a live feed.
                   </Text>
-                </TouchableOpacity>
-                <Text style={styles.helpText}>
-                  Allow Bluetooth access when prompted so Setu Device can scan and deliver the latest
-                  readings.
-                </Text>
+                </View>
+                <Text style={styles.sectionAction}>Total {devices.length}</Text>
+              </View>
 
-                <View style={styles.statusCard}>
-                  <Text style={styles.statusLabel}>Connection status</Text>
-                  <Text style={styles.statusValue}>{connectionStatus}</Text>
-                  {statusLog.map((item, index) => (
-                    <Text key={`${item}-${index}`} style={styles.statusLine}>
-                      • {item}
-                    </Text>
-                  ))}
+              <View style={styles.deviceList}>
+                {devices.map(device => (
+                  <TouchableOpacity
+                    key={device.id}
+                    style={[
+                      styles.deviceCard,
+                      dashboardCompact && styles.deviceCardCompact,
+                      selectedDeviceId === device.id && styles.deviceCardActive,
+                    ]}
+                    onPress={() => openDeviceScreen(device.id, device.name)}
+                  >
+                    <Text style={styles.deviceIcon}>{device.icon}</Text>
+                    <View style={styles.deviceCopy}>
+                      <Text style={styles.deviceName} numberOfLines={1}>
+                        {device.name}
+                      </Text>
+                      <Text style={styles.deviceSubtitle} numberOfLines={2}>
+                        {device.subtitle}
+                      </Text>
+                    </View>
+                    <View style={styles.deviceBadge}>
+                      <Text style={styles.deviceBadgeText} numberOfLines={1}>
+                        {device.badge}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {activeDevice && activeDevice.id === 'setu-oximeter' ? (
+            showLiveOximeterScreen ? (
+              <PulseOximeterLiveScreen
+                oxygen={oxygen}
+                bpm={bpm}
+                connectionStatus={connectionStatus}
+                isConnecting={isConnecting}
+              />
+            ) : (
+              <PulseOximeterPairScreen
+                isConnecting={isConnecting}
+                onConnect={connectToSelectedDevice}
+              />
+            )
+          ) : null}
+
+          {activeDevice && activeDevice.id !== 'setu-oximeter' ? (
+            <View style={styles.deviceDetailWrap}>
+              <View style={styles.deviceDetailHeading}>
+                <Text style={styles.deviceDetailTitle} numberOfLines={2}>
+                  {activeDevice.name}
+                </Text>
+                <Text style={styles.deviceDetailType}>{activeDevice.type}</Text>
+              </View>
+              <Text style={styles.deviceDetailBody} numberOfLines={3}>
+                {activeDevice.detail}
+              </Text>
+              <View style={styles.metrics}>
+                <View style={styles.metricCard}>
+                  <Text style={styles.metricLabel}>SpO₂</Text>
+                  <Text style={styles.metricValue}>
+                    {oxygen !== null ? `${oxygen}%` : '--'}
+                  </Text>
+                </View>
+                <View style={styles.metricCard}>
+                  <Text style={styles.metricLabel}>Pulse</Text>
+                  <Text style={styles.metricValue}>
+                    {bpm !== null ? `${bpm} bpm` : '--'}
+                  </Text>
+                </View>
+                <View style={styles.metricCard}>
+                  <Text style={styles.metricLabel}>Last packet</Text>
+                  <Text style={styles.metricValue}>
+                    {rawData.length ? `${rawData.length} bytes` : 'n/a'}
+                  </Text>
                 </View>
               </View>
-            )}
-          </>
-        )}
-      </ScrollView>
-    </SafeAreaView>
+              <TouchableOpacity
+                style={[styles.connectButton, isConnecting && styles.connectButtonDisabled]}
+                onPress={connectToSelectedDevice}
+                disabled={isConnecting}
+              >
+                <Text style={styles.connectButtonText}>
+                  {isConnecting ? 'Waiting for permission…' : 'Connect & start scan'}
+                </Text>
+              </TouchableOpacity>
+              <Text style={styles.helpText} numberOfLines={2}>
+                Allow Bluetooth access when prompted so Setu Device can scan and deliver the latest
+                readings.
+              </Text>
+
+              <View style={styles.statusCard}>
+                <Text style={styles.statusLabel}>Connection status</Text>
+                <Text style={styles.statusValue} numberOfLines={2}>
+                  {connectionStatus}
+                </Text>
+                {statusLog.map((item, index) => (
+                  <Text key={`${item}-${index}`} style={styles.statusLine} numberOfLines={1}>
+                    • {item}
+                  </Text>
+                ))}
+              </View>
+            </View>
+          ) : null}
+        </View>
+      </View>
+    </View>
   );
 };
 

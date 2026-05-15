@@ -78,7 +78,7 @@ import axiosInstance from "../../../api/axiosInstance";
 /* ================= BASE ================= */
 
 export const PREVENTIVE_BASE_URL =
-  "https://photos-measuring-excitement-vpn.trycloudflare.com";
+  "https://api.setuai.com/preventive-health";
 
 /* ================= AXIOS INSTANCE ================= */
 
@@ -168,6 +168,12 @@ export type LabPatientRecord = {
    * Some packages may contain multiple devices.
    */
   device_ids?: string[] | null;
+  /**
+   * Booking-line ids (`booking_items.id`) corresponding index-wise to `device_ids`.
+   * Used as the `booking_item_id` payload when posting device-side results
+   * (e.g. Remidio Auto Refractometer QR results).
+   */
+  booking_item_ids?: string[] | null;
   package_included_tests?: string[] | null;
 };
 
@@ -408,7 +414,7 @@ export const getLabPatients = async (
   return Array.isArray(list) ? list : [];
 };
 
-export const addToCart = async (deviceId: number) => {
+export const addToCart = async (deviceId: string | number) => {
   const headers = await getAuthHeaders();
 
   return api.post(
@@ -417,7 +423,7 @@ export const addToCart = async (deviceId: number) => {
       items: [
         {
           item_type: "device",
-          item_id: deviceId, // ✅ SAME AS OLD LOGIC
+          item_id: deviceId,
           quantity: 1,
         },
       ],

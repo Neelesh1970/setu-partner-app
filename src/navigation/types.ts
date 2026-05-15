@@ -68,7 +68,7 @@ export type RootStackParamList = {
     patientId: string;
     filter: 'upcoming' | 'completed' | 'pending' | 'missed';
   };
-  Reports: undefined;
+  Reports: { bookingId?: string | null } | undefined;
   Oxymeter:
     | {
         /** Backend device id (uuid) used to map to supported integrations. */
@@ -78,5 +78,22 @@ export type RootStackParamList = {
       }
     | undefined;
   ScaleDevice: undefined;
-  RemidioQRScanner: undefined;
+  RemidioQRScanner:
+    | {
+        /** Backend device id (uuid) used to map to supported integrations. */
+        deviceId?: string | null;
+        /** Backend device name / displayed name used for fallback error message. */
+        deviceName?: string | null;
+        /** Matching `booking_items.id` for this device — posted as `booking_item_id`. */
+        bookingItemId?: string | null;
+        /** Top-level booking id — used for PDF report generation after QR result is submitted. */
+        bookingId?: string | null;
+      }
+    | undefined;
+  BloodPressure:
+    | {
+        deviceId?: string | null;
+        deviceName?: string | null;
+      }
+    | undefined;
 };

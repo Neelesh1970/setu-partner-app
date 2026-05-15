@@ -38,8 +38,11 @@ import {
   type LabPatientFilter,
   type LabPatientRecord,
 } from './PreventiveHealthAPI';
-import axiosInstance from '../../../api/axiosInstance';
+import axiosInstance, { isLabWorkerApiPath } from '../../../api/axiosInstance';
+import axios from 'axios';
+import { BASE_URL } from '../../../api/apiConfig';
 import { pickBackendDeviceByTestName } from '../../../Utils/pickBackendDeviceByTestName';
+import { applyLabIotPerformTestNavigation } from '../../../Utils/labIotPerformTest';
 
 const PRIMARY = COLORS.PRIMARY;
 const PAGE_BG = '#F3F4F6';
@@ -56,8 +59,6 @@ const TABS: { id: LabPatientFilter; label: string }[] = [
 ];
 
 const HOME_NO_TESTS_COPY = 'No tests Available . ';
-const BACKEND_PULSE_OXIMETER_DEVICE_ID = '1b9b9ae7-74e5-4056-a0c2-754e7be8288e';
-const BACKEND_PULSE_OXIMETER_DEVICE_NAME = 'Pulse Oxymeter';
 
 type TestActivityNav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -231,16 +232,6 @@ const TestActivity: React.FC = () => {
     setDeviceUnavailablePopupVisible(false);
   }, []);
 
-  const isPulseOximeterSupported = useCallback(
-    (deviceId?: string | null, deviceName?: string | null) => {
-      const normalizedName = (deviceName ?? '').trim().toLowerCase();
-      return (
-        deviceId === BACKEND_PULSE_OXIMETER_DEVICE_ID ||
-        normalizedName === BACKEND_PULSE_OXIMETER_DEVICE_NAME.toLowerCase()
-      );
-    },
-    [],
-  );
   const displayPatients = useMemo(() => {
     const todayYmd = formatLocalYmd(new Date());
   
@@ -374,21 +365,6 @@ const TestActivity: React.FC = () => {
     [navigation, activeTab],
   );
 
-  /*
-   * Original (working) logic: navigate to Oxymeter without device context.
-   * Kept as commented reference (do not remove) per your instructions.
-   */
-  // const goPerformTest = useCallback(() => {
-  //   navigation.navigate('Oxymeter');
-  // }, [navigation]);
-
-  const goPerformTestWithDevice = useCallback(
-    (deviceId?: string | null, deviceName?: string | null) => {
-      navigation.navigate('Oxymeter', { deviceId: deviceId ?? null, deviceName: deviceName ?? null });
-    },
-    [navigation],
-  );
-
   const closeReport = useCallback(() => {
     setReportVisible(false);
     setReportUrl('');
@@ -408,10 +384,23 @@ const TestActivity: React.FC = () => {
       // Force WebView remount + bypass cache on re-open for same report.
       setReportNonce(n => n + 1);
       setReportVisible(true);
-      // `BASE_URL` already includes `/api/v1`, so keep this path relative to that root.
-      const path = `/reports/by-booking/${id}`;
+      // No leading `/` — axios merges with baseURL; a leading `/` drops `/api/v1` and returns 404.
+      const path = `reports/by-booking/${id}`;
+      const resolvedUrl = axios.getUri({
+        method: 'get',
+        baseURL: axiosInstance.defaults.baseURL,
+        url: path,
+      });
       console.log('[report] booking_id:', id);
-      console.log('[report] GET', path);
+      console.log('[report] path (relative to baseURL):', path);
+      console.log('[report] axiosInstance.defaults.baseURL:', axiosInstance.defaults.baseURL);
+      console.log('[report] apiConfig.BASE_URL:', BASE_URL);
+      console.log('[report] resolved absolute GET URL:', resolvedUrl);
+      console.log(
+        '[report] axios will send lab-worker JWT:',
+        isLabWorkerApiPath(path),
+        '(must be true for /reports/* — patient token often gets "Report not found")',
+      );
       const res = await axiosInstance.get<ReportByBookingResponse>(path);
       console.log('[report] status:', res.status);
       console.log('[report] body:', res.data);
@@ -425,6 +414,12 @@ const TestActivity: React.FC = () => {
       console.log('[report] report_url:', url);
       setReportUrl(url);
     } catch (e) {
+      const err = e as Error & { status?: number; responseData?: unknown };
+      console.log('[report] request failed — diagnostics:', {
+        message: err?.message,
+        httpStatus: err?.status,
+        responseBody: err?.responseData,
+      });
       const msg = e instanceof Error ? e.message : 'Failed to load report';
       setReportError(msg);
     } finally {
@@ -551,10 +546,18 @@ const TestActivity: React.FC = () => {
                         const picked = pickBackendDeviceByTestName({
                           deviceIds: p.device_ids ?? null,
                           deviceNames: p.device_names ?? null,
+                          bookingItemIds: p.booking_item_ids ?? null,
                           testName: labPatientTestLabel(p),
                         });
-                        if (isPulseOximeterSupported(picked.deviceId, picked.deviceName)) {
-                          goPerformTestWithDevice(picked.deviceId, picked.deviceName);
+                        if (
+                          applyLabIotPerformTestNavigation(
+                            navigation.navigate,
+                            picked.deviceId,
+                            picked.deviceName,
+                            picked.bookingItemId,
+                            p.booking_id ?? null,
+                          )
+                        ) {
                           return;
                         }
                         const nameForMsg = picked.deviceName ?? labPatientTestLabel(p);
@@ -582,10 +585,18 @@ const TestActivity: React.FC = () => {
                     const picked = pickBackendDeviceByTestName({
                       deviceIds: p.device_ids ?? null,
                       deviceNames: p.device_names ?? null,
+                      bookingItemIds: p.booking_item_ids ?? null,
                       testName: labPatientTestLabel(p),
                     });
-                    if (isPulseOximeterSupported(picked.deviceId, picked.deviceName)) {
-                      goPerformTestWithDevice(picked.deviceId, picked.deviceName);
+                    if (
+                      applyLabIotPerformTestNavigation(
+                        navigation.navigate,
+                        picked.deviceId,
+                        picked.deviceName,
+                        picked.bookingItemId,
+                        p.booking_id ?? null,
+                      )
+                    ) {
                       return;
                     }
                     const nameForMsg = picked.deviceName ?? labPatientTestLabel(p);

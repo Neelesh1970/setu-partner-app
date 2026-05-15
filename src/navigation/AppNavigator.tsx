@@ -43,8 +43,10 @@ import TestActivity from '../Screens/Home/PreventiveUser/TestActivity';
 import TestDetails from '../Screens/Home/PreventiveUser/TestDetails';
 import Reports from '../Screens/Home/PreventiveUser/Reports';
 import Oxymeter from '../Screens/IOT/Oxymeter';
-import { ScaleDeviceScreen } from '../Screens/IOT/ScaleDevice';
+import ScaleDeviceScreen from '../Screens/IOT/ScaleDevice';
 import RemidioQRScanner from '../Screens/IOT/RemidioQRScanner';
+import BloodPressure from '../Screens/IOT/BloodPressure';
+import { COLORS } from '../Constants/theme';
 import { getAuthToken, getUser, getUserID } from '../Utils/storage';
 import { navigationRef } from './navigationRef';
 import type { VerifiedUser } from '../Services/authService';
@@ -169,9 +171,17 @@ const AppNavigator: React.FC = () => {
         <Stack.Screen name="TestActivity" component={TestActivity} />
         <Stack.Screen name="TestDetails" component={TestDetails} />
         <Stack.Screen name="Reports" component={Reports} />
-        <Stack.Screen name="Oxymeter" component={Oxymeter} />
+        <Stack.Screen
+          name="Oxymeter"
+          component={Oxymeter}
+          options={{
+            statusBarStyle: 'light',
+            statusBarBackgroundColor: COLORS.PRIMARY,
+          }}
+        />
         <Stack.Screen name="ScaleDevice" component={ScaleDeviceScreen} />
         <Stack.Screen name="RemidioQRScanner" component={RemidioQRScanner} />
+        <Stack.Screen name="BloodPressure" component={BloodPressure} />
       </Stack.Navigator>
     </NavigationContainer>
   );

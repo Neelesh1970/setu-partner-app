@@ -1,5 +1,4 @@
-
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -9,10 +8,13 @@ import {
   Image,
   TouchableOpacity,
   RefreshControl,
-  Dimensions ,
+  Dimensions,
+  Platform,
+  BackHandler,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ms, s, vs } from "react-native-size-matters";
+import { useFocusEffect } from "@react-navigation/native";
 import PreventiveHealthHeader from "./PreventiveHealthHeader";
 import CustomPopup from "../Components/CustomPopup";
 import { getPreventiveCartStore } from "../../../Utils/preventiveCartStore";
@@ -23,32 +25,124 @@ const { width: SCREEN_W } = Dimensions.get("window");
 const BANNER_H = Math.min(SCREEN_W * 0.65, ms(280));
 
 const DeviceOverview = ({ navigation, route }: any) => {
-  const device = route.params?.deviceData;
+  const device = route.params?.deviceData ?? {};
+  const currentDeviceId = device?.id ?? null;
+  const isActive = device?.is_active !== false;
+
   const [refreshing, setRefreshing] = useState(false);
   const [addedVisible, setAddedVisible] = useState(false);
+  const [isAddingToCart, setIsAddingToCart] = useState(false);
+  const [cartData, setCartData] = useState<any>(null);
+  const [cartLoaded, setCartLoaded] = useState(false);
 
   const store = useMemo(() => getPreventiveCartStore(), []);
-  const [cartItems, setCartItems] = useState(store.getState().items);
 
-  useEffect(() => {
-    return store.subscribe((s) => setCartItems(s.items));
-  }, [store]);
-
-  useEffect(() => {
-    syncCart().catch(() => {});
+  const syncCartFromServer = useCallback(async () => {
+    const res = await syncCart();
+    setCartData(res ?? null);
+    return res;
   }, []);
 
-  const cartCount = cartItems.length;
+  const cartCount = cartLoaded
+    ? Array.isArray(cartData?.items)
+      ? cartData.items.length
+      : 0
+    : 0;
+
+  const isCurrentDeviceAdded = useMemo(() => {
+    if (!currentDeviceId) return false;
+    const items = Array.isArray(cartData?.items) ? cartData.items : [];
+    return items.some(
+      (it: any) =>
+        it?.item_type === "device" &&
+        (String(it?.item_id) === String(currentDeviceId) ||
+          String(it?.item?.id) === String(currentDeviceId))
+    );
+  }, [cartData?.items, currentDeviceId]);
+
+
+  useEffect(() => {
+    let isNavigating = false;
+
+    const handleBack = () => {
+      if (isNavigating) return true;
+      isNavigating = true;
+      navigation.replace("ReportsHome");
+      return true;
+    };
+
+    let backSub: any;
+    if (Platform.OS === "android") {
+      backSub = BackHandler.addEventListener("hardwareBackPress", handleBack);
+    }
+
+    return () => {
+      backSub?.remove();
+    };
+  }, [navigation]);
+
+
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+      const run = async () => {
+        try {
+          await syncCartFromServer();
+        } catch {
+          if (mounted) setCartData(null);
+        } finally {
+          if (mounted) setCartLoaded(true);
+        }
+      };
+      void run();
+      return () => {
+        mounted = false;
+      };
+    }, [syncCartFromServer])
+  );
+
+  const handleRefresh = useCallback(async () => {
+    try {
+      setRefreshing(true);
+      await syncCartFromServer();
+    } catch {
+      setCartData(null);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [syncCartFromServer]);
 
   const handleAddToCart = async () => {
+    const itemId = device?.id ?? null;
+    if (!isActive || isAddingToCart || isCurrentDeviceAdded) return;
+
     try {
-      await addToCart(device.id);
-      await syncCart();
+      setIsAddingToCart(true);
+      if (itemId) {
+        await addToCart(itemId);
+      } else {
+        const title = String(device?.device_name ?? "device");
+        store.addItem({
+          id: `test-${title}`
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/(^-|-$)/g, ""),
+          title,
+          testsCount: 1,
+          price: Number(device?.price) || 0,
+        });
+      }
+      const res = await syncCart();
+      setCartData(res ?? null);
       setAddedVisible(true);
     } catch (e) {
       console.log("Add to cart error", e);
+    } finally {
+      setIsAddingToCart(false);
     }
   };
+
+  const headerTitle = device?.device_name ?? "Device";
 
   return (
     <>
@@ -56,7 +150,7 @@ const DeviceOverview = ({ navigation, route }: any) => {
 
       <SafeAreaView style={styles.headerSafe}>
         <PreventiveHealthHeader
-          title={device.device_name}
+          title={headerTitle}
           onBackPress={() => navigation.goBack()}
           cartCount={cartCount}
           showRight2
@@ -68,16 +162,20 @@ const DeviceOverview = ({ navigation, route }: any) => {
       <ScrollView
         contentContainerStyle={{ paddingBottom: 120 }}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => syncCart().catch(() => {})} />
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
       >
         {/* Banner Card */}
         <View style={styles.bannerCard}>
-          <Image
-            source={{ uri: device.image_url }}
-            style={styles.bannerImage}
-            resizeMode="cover"
-          />
+          {device.image_url ? (
+            <Image
+              source={{ uri: device.image_url }}
+              style={styles.bannerImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.bannerImage} />
+          )}
         </View>
 
         <View style={styles.body}>
@@ -139,8 +237,20 @@ const DeviceOverview = ({ navigation, route }: any) => {
       </ScrollView>
 
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.btn} onPress={handleAddToCart}>
-          <Text style={styles.btnText}>Add To Cart</Text>
+        <TouchableOpacity
+          style={[styles.btn, !isActive && styles.btnDisabled]}
+          disabled={isAddingToCart || isCurrentDeviceAdded || !isActive}
+          activeOpacity={0.88}
+          onPress={handleAddToCart}
+        >
+          <Text
+            style={[
+              styles.btnText,
+              !isActive && styles.btnTextDisabled,
+            ]}
+          >
+            {isCurrentDeviceAdded ? "Added to cart" : "Add To Cart"}
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -297,9 +407,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  btnDisabled: {
+    backgroundColor: "#94A3B8",
+  },
   btnText: {
     color: "#FFFFFF",
     fontSize: s(16),
     fontWeight: "700",
+  },
+  btnTextDisabled: {
+    color: "#E2E8F0",
   },
 });

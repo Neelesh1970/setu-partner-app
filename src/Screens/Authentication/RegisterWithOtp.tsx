@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -60,44 +61,51 @@ const RegisterWithOtp: React.FC = () => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#EDEDED" />
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         style={styles.flex}
       >
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-          <Text style={styles.backArrow}>←</Text>
-        </TouchableOpacity>
-
-        <View style={styles.bottomCard}>
-          <Text style={styles.title}>Register New User</Text>
-          <Text style={styles.subtitle}>Enter mobile number to get started.</Text>
-
-          <Text style={styles.label}>Mobile Number</Text>
-          <View style={styles.inputRow}>
-            <Text style={styles.prefix}>+91</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter 10-digit number"
-              placeholderTextColor="#aaa"
-              keyboardType="number-pad"
-              value={mobile}
-              onChangeText={handleChange}
-              maxLength={PHONE_LENGTH}
-            />
-          </View>
-
-          <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleContinue}
-            disabled={loading}
-            activeOpacity={0.85}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Continue</Text>
-            )}
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+            <Text style={styles.backArrow}>←</Text>
           </TouchableOpacity>
-        </View>
+
+          <View style={styles.bottomCard}>
+            <Text style={styles.title}>Register New User</Text>
+            <Text style={styles.subtitle}>Enter mobile number to get started.</Text>
+
+            <Text style={styles.label}>Mobile Number</Text>
+            <View style={styles.inputRow}>
+              <Text style={styles.prefix}>+91</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter 10-digit number"
+                placeholderTextColor="#aaa"
+                keyboardType="number-pad"
+                value={mobile}
+                onChangeText={handleChange}
+                maxLength={PHONE_LENGTH}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.button, loading && styles.buttonDisabled]}
+              onPress={handleContinue}
+              disabled={loading}
+              activeOpacity={0.85}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.buttonText}>Continue</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -112,6 +120,9 @@ const styles = StyleSheet.create({
   },
   flex: {
     flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   backBtn: {
     padding: 16,
