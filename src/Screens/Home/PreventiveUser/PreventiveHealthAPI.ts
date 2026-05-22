@@ -78,7 +78,7 @@ import axiosInstance from "../../../api/axiosInstance";
 /* ================= BASE ================= */
 
 export const PREVENTIVE_BASE_URL =
-  "https://api.setuai.com/preventive-health";
+  "https://staging.setuai.com/preventive-health";
 
 /* ================= AXIOS INSTANCE ================= */
 
@@ -145,6 +145,20 @@ export type LabPatientFilter =
   | "pending"
   | "missed";
 
+/** A single device from `devices[]` or `packages[].included_tests[]` in the new API response. */
+export type RawDeviceItem = {
+  device_name: string;
+  device_id: string;
+  booking_item_id: string;
+};
+
+/** A package entry from `packages[]` in the new API response. */
+export type RawPackageItem = {
+  package_id: string;
+  package_name: string;
+  included_tests: RawDeviceItem[];
+};
+
 export type LabPatientRecord = {
   id?: string;
   user_id?: string | number | null;
@@ -161,22 +175,31 @@ export type LabPatientRecord = {
   scheduled_at?: string | null;
   test_status?: string | null;
   can_perform_test?: boolean | null;
+  /** Reason the test cannot be performed yet (from backend `perform_block_reason`). */
+  perform_block_reason?: string | null;
   package_names?: string[] | null;
   device_names?: string[] | null;
   /**
    * Backend device ids corresponding index-wise to `device_names`.
-   * Some packages may contain multiple devices.
+   * Populated by flattening `devices[]` + `packages[].included_tests[]`.
    */
   device_ids?: string[] | null;
   /**
    * Booking-line ids (`booking_items.id`) corresponding index-wise to `device_ids`.
-   * Used as the `booking_item_id` payload when posting device-side results
-   * (e.g. Remidio Auto Refractometer QR results).
+   * Used as the `booking_item_id` payload when posting device-side results.
    */
   booking_item_ids?: string[] | null;
   package_included_tests?: string[] | null;
+  payment_status?: string | null;
+  payment_method?: string | null;
+  /** Booking amount (e.g. "353.00") — used to display on the Collect Cash button. */
+  amount?: string | null;
+  /** Structured standalone devices from new API response. Used for multi-device selection. */
+  devices?: RawDeviceItem[] | null;
+  /** Structured packages (each with included_tests) from new API response. */
+  packages?: RawPackageItem[] | null;
 };
-
+  
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
 /** Local calendar date as `YYYY-MM-DD` (for comparing with API slot/booking dates). */
@@ -395,11 +418,40 @@ export const labPatientLocationLabel = (p: LabPatientRecord): string => {
   return "At Centre";
 };
 
+/** Raw patient shape returned by the new API (before transformation into LabPatientRecord). */
+type RawApiPatient = {
+  id?: string;
+  user_id?: string | number | null;
+  booking_id?: string | null;
+  full_name?: string | null;
+  gender?: string | null;
+  age?: number | null;
+  phone?: string | null;
+  service_type?: string | null;
+  slot_start_time?: string | null;
+  slot_end_time?: string | null;
+  slot_date?: string | null;
+  booking_date?: string | null;
+  scheduled_at?: string | null;
+  can_perform_test?: boolean | null;
+  perform_block_reason?: string | null;
+  test_status?: string | null;
+  payment_status?: string | null;
+  payment_method?: string | null;
+  amount?: string | null;
+  /** Standalone (non-package) devices assigned to this booking. */
+  devices?: RawDeviceItem[];
+  /** Package assignments, each with their included device tests. */
+  packages?: RawPackageItem[];
+};
+
 type LabPatientsApiResponse = {
   success?: boolean;
   message?: string;
   data?: {
-    patients?: LabPatientRecord[];
+    patients?: RawApiPatient[];
+    service_scope?: string;
+    primary_center_id?: string;
     filter?: string;
   };
 };
@@ -407,11 +459,81 @@ type LabPatientsApiResponse = {
 export const getLabPatients = async (
   filter: LabPatientFilter,
 ): Promise<LabPatientRecord[]> => {
+  console.log('[getLabPatients] fetching, filter:', filter);
   const res = await axiosInstance.get<LabPatientsApiResponse>("lab/patients", {
     params: { filter },
   });
+  console.log('[getLabPatients] response success:', res.data?.success, 'message:', res.data?.message);
   const list = res.data?.data?.patients;
-  return Array.isArray(list) ? list : [];
+  console.log('[getLabPatients] patients count:', Array.isArray(list) ? list.length : 0);
+  if (!Array.isArray(list)) return [];
+
+  return list.map((raw): LabPatientRecord => {
+    const standaloneDevices = raw.devices ?? [];
+    const pkgs = raw.packages ?? [];
+    // Flatten all devices (standalone + from packages) into parallel arrays for backward compat.
+    const packageDevices = pkgs.flatMap(pkg => pkg.included_tests ?? []);
+    const allDevices = [...standaloneDevices, ...packageDevices];
+
+    const device_names = allDevices.map(d => d.device_name).filter(Boolean);
+    const device_ids = allDevices.map(d => d.device_id).filter(Boolean);
+    const booking_item_ids = allDevices.map(d => d.booking_item_id).filter(Boolean);
+    const package_names = pkgs.map(pkg => pkg.package_name).filter(Boolean);
+
+    console.log(
+      '[getLabPatients] patient:', raw.full_name,
+      '| standalone devices:', standaloneDevices.length,
+      '| packages:', pkgs.length,
+      '| total devices:', allDevices.length,
+      '| can_perform_test:', raw.can_perform_test,
+    );
+
+    return {
+      id: raw.id,
+      user_id: raw.user_id,
+      booking_id: raw.booking_id,
+      full_name: raw.full_name,
+      gender: raw.gender,
+      age: raw.age,
+      phone: raw.phone,
+      service_type: raw.service_type,
+      slot_start_time: raw.slot_start_time,
+      slot_end_time: raw.slot_end_time,
+      slot_date: raw.slot_date,
+      booking_date: raw.booking_date,
+      scheduled_at: raw.scheduled_at,
+      test_status: raw.test_status,
+      can_perform_test: raw.can_perform_test,
+      perform_block_reason: raw.perform_block_reason,
+      payment_status: raw.payment_status,
+      payment_method: raw.payment_method,
+      amount: raw.amount ?? null,
+      device_names: device_names.length > 0 ? device_names : null,
+      device_ids: device_ids.length > 0 ? device_ids : null,
+      booking_item_ids: booking_item_ids.length > 0 ? booking_item_ids : null,
+      package_names: package_names.length > 0 ? package_names : null,
+      // Preserve the structured raw data for multi-device selection in TestActivity.
+      devices: raw.devices ?? [],
+      packages: raw.packages ?? [],
+    };
+  });
+};
+
+export type CollectCashApiResponse = {
+  success?: boolean;
+  message?: string;
+  data?: unknown;
+};
+
+/** POST lab/bookings/:bookingId/collect-cash — records cash collection by lab worker. */
+export const collectCashPayment = async (
+  bookingId: string,
+): Promise<CollectCashApiResponse> => {
+  const res = await axiosInstance.patch<CollectCashApiResponse>(
+    `lab/bookings/${encodeURIComponent(bookingId)}/collect-cash`,
+    {},
+  );
+  return res.data;
 };
 
 export const addToCart = async (deviceId: string | number) => {

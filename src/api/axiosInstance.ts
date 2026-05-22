@@ -53,6 +53,8 @@ export function isLabWorkerApiPath(url: string | undefined): boolean {
     base.startsWith('lab/') ||
     /** Same auth as lab/reports (member JWT cannot open lab report by booking). */
     base.startsWith('reports/') ||
+    /** IOT device result submissions (qr-results, pulse-oxymeter-results, etc.) use lab-worker session. */
+    base.startsWith('devices/') ||
     base === 'identity-verification'
   );
 }

@@ -92,6 +92,8 @@ export function isLabIotPerformTestSupported(
  * `bookingItemId` (when known) is forwarded to flows that need to POST device-side results
  * keyed by booking line (e.g. Remidio Auto Refractometer QR results).
  * `bookingId` (when known) is forwarded to the Remidio flow for PDF report generation.
+ * `isMultiDevice` signals that this test is part of a multi-device booking — the IOT screen
+ * should skip the Generate PDF step and navigate back to DeviceSelectScreen after saving.
  */
 export function applyLabIotPerformTestNavigation(
   navigate: LabIotRootStackNavigate,
@@ -99,6 +101,7 @@ export function applyLabIotPerformTestNavigation(
   deviceName?: string | null,
   bookingItemId?: string | null,
   bookingId?: string | null,
+  isMultiDevice?: boolean,
 ): boolean {
   const screen = resolveLabIotPerformTestScreen(deviceId, deviceName);
   if (!screen) {
@@ -108,11 +111,19 @@ export function applyLabIotPerformTestNavigation(
     navigate('Oxymeter', {
       deviceId: deviceId ?? null,
       deviceName: deviceName ?? null,
+      bookingItemId: bookingItemId ?? null,
+      bookingId: bookingId ?? null,
+      isMultiDevice: isMultiDevice ?? false,
     });
     return true;
   }
   if (screen === 'ScaleDevice') {
-    navigate('ScaleDevice');
+    navigate('ScaleDevice', {
+      deviceId: deviceId ?? null,
+      bookingItemId: bookingItemId ?? null,
+      bookingId: bookingId ?? null,
+      isMultiDevice: isMultiDevice ?? false,
+    });
     return true;
   }
   if (screen === 'BloodPressure') {
@@ -127,6 +138,7 @@ export function applyLabIotPerformTestNavigation(
     deviceName: deviceName ?? null,
     bookingItemId: bookingItemId ?? null,
     bookingId: bookingId ?? null,
+    isMultiDevice: isMultiDevice ?? false,
   });
   return true;
 }

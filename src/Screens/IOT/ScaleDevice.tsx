@@ -1,5 +1,8 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {
+  ActivityIndicator,
+  Alert,
+  Modal,
   View,
   Text,
   PermissionsAndroid,
@@ -15,6 +18,13 @@ import {ms, s, vs} from 'react-native-size-matters';
 import {BleManager, Device, Subscription} from 'react-native-ble-plx';
 import {Buffer} from 'buffer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {useNavigation, useRoute, type RouteProp} from '@react-navigation/native';
+import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
+import type {RootStackParamList} from '../../navigation/types';
+import {postBmiResult} from '../../api/iotDeviceResults';
+import axiosInstance from '../../api/axiosInstance';
+import {BACKEND_BMI_DEVICE_ID} from '../../Utils/labIotPerformTest';
+import {setPendingCompletedBookingItemId} from '../../Utils/multiDeviceSession';
 
 const STORAGE_KEY = 'SCALE_WEIGHT_HISTORY';
 
@@ -83,7 +93,125 @@ function getBmiCategory(bmi: number | null): string {
   return 'Obese';
 }
 
+// ─── Results bottom-sheet modal ───────────────────────────────────────────────
+
+interface ScaleBmiResultsModalProps {
+  visible: boolean;
+  height: number | null;
+  weight: number | null;
+  bmi: number | null;
+  isPdfLoading: boolean;
+  onGeneratePdf: () => void;
+  onClose: () => void;
+}
+
+function ScaleBmiResultsModal({
+  visible,
+  height,
+  weight,
+  bmi,
+  isPdfLoading,
+  onGeneratePdf,
+  onClose,
+}: ScaleBmiResultsModalProps) {
+  const bmiCategory = getBmiCategory(bmi);
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}>
+      <View style={styles.sdModalOverlay}>
+        <View style={styles.sdModalSheet}>
+          {/* Handle */}
+          <View style={styles.sdModalHandle} />
+
+          {/* Title */}
+          <View style={styles.sdModalTitleRow}>
+            <Text style={styles.sdModalTitle}>Results Saved </Text>
+            <Text style={{fontSize: ms(20)}}>✅</Text>
+          </View>
+          <Text style={styles.sdModalSubtitle}>
+            BMI readings have been recorded successfully.
+          </Text>
+
+          {/* Three metric rows */}
+          <View style={styles.sdModalResultCard}>
+            {/* Height */}
+            <View style={styles.sdModalMetricRow}>
+              <View style={styles.sdModalMetricLeft}>
+                <Text style={styles.sdModalMetricLabel}>Height</Text>
+              </View>
+              <Text style={styles.sdModalMetricValue}>
+                {height !== null ? `${height} cm` : '—'}
+              </Text>
+            </View>
+            <View style={styles.sdModalDivider} />
+
+            {/* Weight */}
+            <View style={styles.sdModalMetricRow}>
+              <View style={styles.sdModalMetricLeft}>
+                <Text style={styles.sdModalMetricLabel}>Weight</Text>
+              </View>
+              <Text style={styles.sdModalMetricValue}>
+                {weight !== null ? `${weight} kg` : '—'}
+              </Text>
+            </View>
+            <View style={styles.sdModalDivider} />
+
+            {/* BMI */}
+            <View style={styles.sdModalMetricRow}>
+              <View style={styles.sdModalMetricLeft}>
+                <Text style={styles.sdModalMetricLabel}>BMI</Text>
+                {bmi !== null && (
+                  <View style={styles.sdModalCategoryBadge}>
+                    <Text style={styles.sdModalCategoryText}>{bmiCategory}</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={[styles.sdModalMetricValue, styles.sdModalBmiValue]}>
+                {bmi !== null ? `${bmi}` : '—'}
+              </Text>
+            </View>
+          </View>
+
+          {/* Generate PDF */}
+          <TouchableOpacity
+            style={[
+              styles.sdModalPdfBtn,
+              isPdfLoading && styles.sdModalPdfBtnDisabled,
+            ]}
+            onPress={onGeneratePdf}
+            disabled={isPdfLoading}
+            activeOpacity={0.88}>
+            {isPdfLoading ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={styles.sdModalPdfBtnText}>Generate PDF</Text>
+            )}
+          </TouchableOpacity>
+
+          {/* Close */}
+          <TouchableOpacity
+            style={styles.sdModalCloseBtn}
+            onPress={onClose}
+            disabled={isPdfLoading}>
+            <Text style={styles.sdModalCloseBtnText}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ─── Main screen ──────────────────────────────────────────────────────────────
+
 export default function ScaleDeviceScreen() {
+  const route = useRoute<RouteProp<RootStackParamList, 'ScaleDevice'>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList, 'ScaleDevice'>>();
+
   const {width: windowWidth} = useWindowDimensions();
   const [status, setStatus] = useState('Idle');
   const [devices, setDevices] = useState<Device[]>([]);
@@ -94,6 +222,10 @@ export default function ScaleDeviceScreen() {
   const [heightCm, setHeightCm] = useState('');
   const [bmi, setBmi] = useState<number | null>(null);
   const [history, setHistory] = useState<WeightRecord[]>([]);
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [showResultsModal, setShowResultsModal] = useState(false);
+  const [isPdfLoading, setIsPdfLoading] = useState(false);
 
   const deviceMap = useRef(new Map<string, Device>());
   const connectedDevice = useRef<Device | null>(null);
@@ -599,6 +731,66 @@ export default function ScaleDeviceScreen() {
   const weightFontSize = windowWidth < 340 ? ms(40) : windowWidth < 380 ? ms(48) : ms(56);
   const weightUnitFontSize = windowWidth < 340 ? ms(16) : ms(20);
 
+  const heightNum = parseFloat(heightCm) || null;
+  const canSave = weight !== null && heightNum !== null && bmi !== null;
+
+  async function handleSave(): Promise<void> {
+    if (!canSave || weight === null || heightNum === null || bmi === null) return;
+
+    const deviceId = route.params?.deviceId ?? BACKEND_BMI_DEVICE_ID;
+    const bookingItemId = route.params?.bookingItemId ?? null;
+    const isMultiDevice = route.params?.isMultiDevice ?? false;
+
+    if (!bookingItemId) {
+      Alert.alert(
+        'Missing booking info',
+        'No booking item linked to this session. Please navigate here from the patient booking.',
+      );
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await postBmiResult({
+        deviceId,
+        bookingItemId,
+        height: heightNum,
+        weight,
+        bmi,
+      });
+      if (isMultiDevice) {
+        // Multi-device flow: store the completed item id in a module-level variable then go back.
+        // goBack() does not touch DeviceSelect's params — devices/packages stay intact.
+        setPendingCompletedBookingItemId(bookingItemId);
+        navigation.goBack();
+      } else {
+        setShowResultsModal(true);
+      }
+    } catch (err) {
+      const e = err as {message?: string};
+      Alert.alert('Save failed', e?.message ?? 'Could not save results. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleGeneratePdf(): Promise<void> {
+    const bookingId = route.params?.bookingId ?? null;
+    setIsPdfLoading(true);
+    try {
+      if (bookingId) {
+        await axiosInstance.post('reports/payload/pdf', {bookingId});
+      }
+    } catch (err) {
+      const e = err as {message?: string};
+      console.warn('[ScaleDevice] PDF generation failed:', e?.message ?? err);
+    } finally {
+      setIsPdfLoading(false);
+    }
+    setShowResultsModal(false);
+    navigation.replace('Reports', {bookingId: route.params?.bookingId ?? undefined});
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
       <ScrollView
@@ -678,10 +870,23 @@ export default function ScaleDeviceScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.debugCard}>
+        {/* Save button */}
+        <TouchableOpacity
+          style={[styles.sdSaveBtn, (!canSave || isSaving) && styles.sdSaveBtnDisabled]}
+          onPress={() => void handleSave()}
+          disabled={!canSave || isSaving}
+          activeOpacity={0.88}>
+          {isSaving ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={styles.sdSaveBtnText}>Save</Text>
+          )}
+        </TouchableOpacity>
+
+        {/* <View style={styles.debugCard}>
           <Text style={styles.debugTitle}>Last Packet</Text>
           <Text style={styles.debugHex}>{lastHex || '-'}</Text>
-        </View>
+        </View> */}
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Found Devices</Text>
@@ -739,6 +944,16 @@ export default function ScaleDeviceScreen() {
           ))
         )}
       </ScrollView>
+
+      <ScaleBmiResultsModal
+        visible={showResultsModal}
+        height={heightNum}
+        weight={weight}
+        bmi={bmi}
+        isPdfLoading={isPdfLoading}
+        onGeneratePdf={() => void handleGeneratePdf()}
+        onClose={() => setShowResultsModal(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -1060,5 +1275,142 @@ const styles = StyleSheet.create({
     color: '#777',
     marginTop: vs(4),
     textAlign: 'right',
+  },
+
+  // ─── Save button ────────────────────────────────────────────────────────────
+  sdSaveBtn: {
+    backgroundColor: '#080B37',
+    paddingVertical: vs(15),
+    borderRadius: ms(14),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: vs(12),
+  },
+  sdSaveBtnDisabled: {
+    opacity: 0.4,
+  },
+  sdSaveBtnText: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: ms(16),
+  },
+
+  // ─── Results bottom-sheet modal ─────────────────────────────────────────────
+  sdModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.55)',
+    justifyContent: 'flex-end',
+  },
+  sdModalSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: ms(24),
+    borderTopRightRadius: ms(24),
+    paddingHorizontal: ms(20),
+    paddingTop: vs(16),
+    paddingBottom: vs(36),
+  },
+  sdModalHandle: {
+    width: ms(40),
+    height: vs(4),
+    backgroundColor: '#CBD5E1',
+    borderRadius: ms(2),
+    alignSelf: 'center',
+    marginBottom: vs(18),
+  },
+  sdModalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: vs(4),
+  },
+  sdModalTitle: {
+    fontSize: ms(20),
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  sdModalSubtitle: {
+    fontSize: ms(13),
+    color: '#64748B',
+    lineHeight: ms(18),
+    marginBottom: vs(18),
+  },
+  sdModalResultCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: ms(14),
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: vs(20),
+    overflow: 'hidden',
+  },
+  sdModalMetricRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: vs(14),
+    paddingHorizontal: ms(16),
+  },
+  sdModalDivider: {
+    height: 1,
+    backgroundColor: '#E2E8F0',
+    marginHorizontal: ms(16),
+  },
+  sdModalMetricLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: ms(8),
+    flex: 1,
+    minWidth: 0,
+  },
+  sdModalMetricLabel: {
+    fontSize: ms(14),
+    fontWeight: '700',
+    color: '#334155',
+  },
+  sdModalMetricValue: {
+    fontSize: ms(18),
+    fontWeight: '800',
+    color: '#2F387E',
+    flexShrink: 0,
+  },
+  sdModalBmiValue: {
+    fontSize: ms(22),
+    color: '#080B37',
+  },
+  sdModalCategoryBadge: {
+    backgroundColor: '#FFF5F0',
+    borderColor: '#E2956B',
+    borderWidth: 1,
+    paddingHorizontal: ms(8),
+    paddingVertical: vs(3),
+    borderRadius: ms(10),
+  },
+  sdModalCategoryText: {
+    color: '#B75B2B',
+    fontWeight: '800',
+    fontSize: ms(11),
+  },
+  sdModalPdfBtn: {
+    backgroundColor: '#080B37',
+    paddingVertical: vs(14),
+    borderRadius: ms(14),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: vs(8),
+  },
+  sdModalPdfBtnDisabled: {
+    opacity: 0.5,
+  },
+  sdModalPdfBtnText: {
+    color: '#fff',
+    fontSize: ms(15),
+    fontWeight: '800',
+  },
+  sdModalCloseBtn: {
+    paddingVertical: vs(10),
+    alignItems: 'center',
+  },
+  sdModalCloseBtnText: {
+    color: '#64748B',
+    fontSize: ms(14),
+    fontWeight: '600',
   },
 });

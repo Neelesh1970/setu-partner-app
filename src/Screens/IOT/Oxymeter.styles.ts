@@ -707,4 +707,136 @@ export default StyleSheet.create({
   oxLiveStatusTextError: {
     color: COLORS.ERROR,
   },
+
+  // ─── Save button (bottom of live screen) ──────────────────────────────────
+  oxLiveSaveRow: {
+    flexShrink: 0,
+    paddingHorizontal: SPACING.LG,
+    paddingBottom: 28,
+    paddingTop: SPACING.SM,
+    backgroundColor: COLORS.WHITE,
+  },
+  oxLiveSaveBtn: {
+    backgroundColor: COLORS.PRIMARY,
+    paddingVertical: 15,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  oxLiveSaveBtnDisabled: {
+    opacity: 0.4,
+  },
+  oxLiveSaveBtnText: {
+    color: COLORS.WHITE,
+    fontSize: 17,
+    fontWeight: '700',
+  },
+
+  // ─── Results bottom-sheet modal ────────────────────────────────────────────
+  oxModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.55)',
+    justifyContent: 'flex-end',
+  },
+  oxModalSheet: {
+    backgroundColor: COLORS.WHITE,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: SPACING.LG,
+    paddingTop: 20,
+    paddingBottom: 36,
+  },
+  oxModalHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: '#CBD5E1',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  oxModalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  oxModalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  oxModalSubtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    lineHeight: 18,
+    marginBottom: 20,
+  },
+  oxModalResultCard: {
+    flexDirection: 'row',
+    backgroundColor: '#F8FAFC',
+    borderRadius: RADIUS_MD,
+    borderWidth: 1,
+    borderColor: COLORS.CARD_BORDER,
+    overflow: 'hidden',
+    marginBottom: 20,
+  },
+  oxModalMetricCol: {
+    flex: 1,
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  oxModalMetricDivider: {
+    width: 1,
+    backgroundColor: COLORS.CARD_BORDER,
+    alignSelf: 'stretch',
+    marginVertical: 12,
+  },
+  oxModalMetricIcon: {
+    marginBottom: 6,
+  },
+  oxModalMetricLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 4,
+  },
+  oxModalMetricValue: {
+    fontSize: 40,
+    fontWeight: '800',
+    color: '#2E5BFF',
+    lineHeight: 44,
+  },
+  oxModalMetricUnit: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  oxModalPdfBtn: {
+    backgroundColor: COLORS.PRIMARY,
+    paddingVertical: 15,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.SM,
+  },
+  oxModalPdfBtnDisabled: {
+    opacity: 0.5,
+  },
+  oxModalPdfBtnText: {
+    color: COLORS.WHITE,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  oxModalCloseBtn: {
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  oxModalCloseBtnText: {
+    color: '#64748B',
+    fontSize: 15,
+    fontWeight: '600',
+  },
 });
