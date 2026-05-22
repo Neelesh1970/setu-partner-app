@@ -42,10 +42,12 @@ import PreventiveBookingSummary from '../Screens/Home/PreventiveUser/PreventiveB
 import TestActivity from '../Screens/Home/PreventiveUser/TestActivity';
 import TestDetails from '../Screens/Home/PreventiveUser/TestDetails';
 import Reports from '../Screens/Home/PreventiveUser/Reports';
+import CashPaymentReceive from '../Screens/Home/PreventiveUser/CashPaymentReceive';
 import Oxymeter from '../Screens/IOT/Oxymeter';
 import ScaleDeviceScreen from '../Screens/IOT/ScaleDevice';
 import RemidioQRScanner from '../Screens/IOT/RemidioQRScanner';
 import BloodPressure from '../Screens/IOT/BloodPressure';
+import DeviceSelectScreen from '../Screens/Home/PreventiveUser/DeviceSelectScreen';
 import { COLORS } from '../Constants/theme';
 import { getAuthToken, getUser, getUserID } from '../Utils/storage';
 import { navigationRef } from './navigationRef';
@@ -171,6 +173,7 @@ const AppNavigator: React.FC = () => {
         <Stack.Screen name="TestActivity" component={TestActivity} />
         <Stack.Screen name="TestDetails" component={TestDetails} />
         <Stack.Screen name="Reports" component={Reports} />
+        <Stack.Screen name="CashPaymentReceive" component={CashPaymentReceive} />
         <Stack.Screen
           name="Oxymeter"
           component={Oxymeter}
@@ -182,6 +185,7 @@ const AppNavigator: React.FC = () => {
         <Stack.Screen name="ScaleDevice" component={ScaleDeviceScreen} />
         <Stack.Screen name="RemidioQRScanner" component={RemidioQRScanner} />
         <Stack.Screen name="BloodPressure" component={BloodPressure} />
+        <Stack.Screen name="DeviceSelect" component={DeviceSelectScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

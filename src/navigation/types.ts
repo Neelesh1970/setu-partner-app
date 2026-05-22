@@ -1,3 +1,5 @@
+import type { RawDeviceItem, RawPackageItem } from '../Screens/Home/PreventiveUser/PreventiveHealthAPI';
+
 export type RootStackParamList = {
   Welcome: undefined;
   Login: undefined;
@@ -69,15 +71,30 @@ export type RootStackParamList = {
     filter: 'upcoming' | 'completed' | 'pending' | 'missed';
   };
   Reports: { bookingId?: string | null } | undefined;
+  CashPaymentReceive: { bookingId: string; amount?: number | null };
   Oxymeter:
     | {
         /** Backend device id (uuid) used to map to supported integrations. */
         deviceId?: string | null;
         /** Backend device name / displayed name used for fallback error message. */
         deviceName?: string | null;
+        /** Matching `booking_items.id` for this device — posted as `booking_item_id`. */
+        bookingItemId?: string | null;
+        /** Top-level booking id — used for PDF report generation after result is submitted. */
+        bookingId?: string | null;
+        /** True when opened from DeviceSelectScreen (multi-device booking). PDF is handled by DeviceSelect. */
+        isMultiDevice?: boolean;
       }
     | undefined;
-  ScaleDevice: undefined;
+  ScaleDevice:
+    | {
+        deviceId?: string | null;
+        bookingItemId?: string | null;
+        bookingId?: string | null;
+        /** True when opened from DeviceSelectScreen (multi-device booking). PDF is handled by DeviceSelect. */
+        isMultiDevice?: boolean;
+      }
+    | undefined;
   RemidioQRScanner:
     | {
         /** Backend device id (uuid) used to map to supported integrations. */
@@ -88,6 +105,8 @@ export type RootStackParamList = {
         bookingItemId?: string | null;
         /** Top-level booking id — used for PDF report generation after QR result is submitted. */
         bookingId?: string | null;
+        /** True when opened from DeviceSelectScreen (multi-device booking). PDF is handled by DeviceSelect. */
+        isMultiDevice?: boolean;
       }
     | undefined;
   BloodPressure:
@@ -96,4 +115,13 @@ export type RootStackParamList = {
         deviceName?: string | null;
       }
     | undefined;
+  DeviceSelect: {
+    patientName?: string;
+    bookingId: string | null;
+    devices?: RawDeviceItem[];
+    packages?: RawPackageItem[];
+    /** Set by IOT screens after a successful save in multi-device flow.
+     *  Only this field is passed on navigate-back — devices/packages are preserved via param merge. */
+    completedBookingItemId?: string | null;
+  };
 };

@@ -26,6 +26,7 @@ import {
   labPatientTestLabel,
   type LabPatientFilter,
   type LabPatientRecord,
+  type RawDeviceItem,
 } from './PreventiveHealthAPI';
 import CustomPopup from '../Components/CustomPopup';
 import { pickBackendDeviceByTestName } from '../../../Utils/pickBackendDeviceByTestName';
@@ -81,22 +82,54 @@ const TestDetails: React.FC = () => {
     setDeviceUnavailablePopupVisible(false);
   }, []);
 
+
   const onContinue = useCallback(() => {
     if (!patient) return;
 
-    /*
-     * Original (working) code: no navigation on Continue.
-     * Kept as reference (do not remove existing UI).
-     */
-    // navigation.navigate('Oxymeter');
+    const standaloneDevices = patient.devices ?? [];
+    const packageDevices = (patient.packages ?? []).flatMap(pkg => pkg.included_tests ?? []);
+    const allDevices: RawDeviceItem[] = [...standaloneDevices, ...packageDevices];
 
-    const testLabel = labPatientTestLabel(patient);
-    const picked = pickBackendDeviceByTestName({
-      deviceIds: patient.device_ids ?? null,
-      deviceNames: patient.device_names ?? null,
-      bookingItemIds: patient.booking_item_ids ?? null,
-      testName: testLabel,
-    });
+    console.log(
+      '[TestDetails] onContinue — patient:', patient.full_name,
+      '| standalone devices:', standaloneDevices.length,
+      '| package devices:', packageDevices.length,
+      '| total:', allDevices.length,
+      '| can_perform_test:', patient.can_perform_test,
+      '| booking_id:', patient.booking_id,
+    );
+
+    if (allDevices.length > 1) {
+      console.log('[TestDetails] multiple devices — navigating to DeviceSelect screen');
+      navigation.navigate('DeviceSelect', {
+        patientName: (patient.full_name ?? '').trim() || '—',
+        bookingId: patient.booking_id ?? null,
+        devices: patient.devices ?? [],
+        packages: patient.packages ?? [],
+      });
+      return;
+    }
+
+    // Single device: use structured item if available, otherwise fall back to flat arrays.
+    const picked =
+      allDevices.length === 1
+        ? {
+            deviceId: allDevices[0].device_id,
+            deviceName: allDevices[0].device_name,
+            bookingItemId: allDevices[0].booking_item_id,
+          }
+        : pickBackendDeviceByTestName({
+            deviceIds: patient.device_ids ?? null,
+            deviceNames: patient.device_names ?? null,
+            bookingItemIds: patient.booking_item_ids ?? null,
+            testName: labPatientTestLabel(patient),
+          });
+
+    console.log(
+      '[TestDetails] navigating to device — name:', picked.deviceName,
+      '| id:', picked.deviceId,
+      '| bookingItemId:', picked.bookingItemId,
+    );
 
     if (
       applyLabIotPerformTestNavigation(
@@ -110,7 +143,8 @@ const TestDetails: React.FC = () => {
       return;
     }
 
-    const nameForMsg = picked.deviceName ?? testLabel;
+    const nameForMsg = picked.deviceName ?? labPatientTestLabel(patient);
+    console.log('[TestDetails] device unavailable for:', nameForMsg);
     setDeviceUnavailablePopupMessage(`No device available for this ${nameForMsg}`);
     setDeviceUnavailablePopupVisible(true);
   }, [navigation, patient]);
@@ -450,4 +484,5 @@ const styles = StyleSheet.create({
     fontSize: ms(16),
     fontWeight: '700',
   },
+
 });

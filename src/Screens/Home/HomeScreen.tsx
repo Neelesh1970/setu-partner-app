@@ -45,6 +45,8 @@ import {
   labPatientTestLabel,
   selectUpcomingFromPending,
   type LabPatientRecord,
+  type RawDeviceItem,
+  type RawPackageItem,
 } from './PreventiveUser/PreventiveHealthAPI';
 import CustomPopup from './Components/CustomPopup';
 
@@ -69,8 +71,13 @@ type HomeUpcomingPreviewItem = {
   bookingItemId?: string | null;
   /** Top-level booking id forwarded to Remidio scanner for PDF generation. */
   bookingId?: string | null;
+  /** Structured standalone devices — used to detect multi-device bookings. */
+  devices: RawDeviceItem[];
+  /** Package entries with included tests — used to detect multi-device bookings. */
+  packages: RawPackageItem[];
   time: string;
-  payment: string;
+  paymentStatus: string;
+  paymentMethod: string;
   performDisabled: boolean;
 };
 
@@ -321,7 +328,8 @@ const UpcomingTestCard: React.FC<{
   patientId: string;
   testName: string;
   time: string;
-  payment: string;
+  paymentStatus: string;
+  paymentMethod: string;
   onSeeDetails: () => void;
   onPerformTest: () => void;
   performDisabled: boolean;
@@ -330,12 +338,19 @@ const UpcomingTestCard: React.FC<{
   patientId,
   testName,
   time,
-  payment,
+  paymentStatus,
+  paymentMethod,
   onSeeDetails,
   onPerformTest,
   performDisabled,
 }) => {
-  const paid = payment === 'Paid';
+  const isPaid = (paymentStatus || '').toLowerCase() === 'paid';
+  const statusLabel = paymentStatus
+    ? paymentStatus.charAt(0).toUpperCase() + paymentStatus.slice(1).toLowerCase()
+    : '—';
+  const methodLabel = paymentMethod
+    ? paymentMethod.charAt(0).toUpperCase() + paymentMethod.slice(1).toLowerCase()
+    : '';
   return (
     <View style={styles.listCard}>
       <View style={styles.cardTopRow}>
@@ -352,22 +367,21 @@ const UpcomingTestCard: React.FC<{
           <Text style={styles.upcomingTimeText}>{time}</Text>
         </View>
         <View style={styles.upcomingPayRow}>
-          <View
-            style={[
-              styles.rupeeBadge,
-              !paid ? styles.rupeeBadgeDue : null,
-            ]}
-          >
+          <View style={[styles.rupeeBadge, !isPaid ? styles.rupeeBadgeDue : null]}>
             <Text style={styles.rupeeBadgeText}>₹</Text>
           </View>
-          <Text
-            style={[
-              styles.upcomingPayText,
-              !paid ? styles.upcomingPayTextDue : null,
-            ]}
-          >
-            {payment}
-          </Text>
+          <View style={styles.upcomingPayStack}>
+            <Text style={[styles.upcomingPayText, !isPaid ? styles.upcomingPayTextDue : null]}>
+              {statusLabel}
+            </Text>
+            {methodLabel ? (
+              <View style={[styles.methodPill, !isPaid ? styles.methodPillDue : null]}>
+                <Text style={[styles.methodPillText, !isPaid ? styles.methodPillTextDue : null]}>
+                  {methodLabel}
+                </Text>
+              </View>
+            ) : null}
+          </View>
         </View>
       </View>
       <TouchableOpacity
@@ -596,8 +610,11 @@ const HomeScreen: React.FC = () => {
             testName: labPatientTestLabel(p),
           }),
           bookingId: p.booking_id ?? null,
+          devices: p.devices ?? [],
+          packages: p.packages ?? [],
           time: formatLabSlotRange(p.slot_start_time, p.slot_end_time),
-          payment: 'Paid',
+          paymentStatus: p.payment_status ?? 'pending',
+          paymentMethod: p.payment_method ?? '',
           performDisabled: !canPerformTestNow(p),
         }));
 
@@ -664,8 +681,11 @@ const HomeScreen: React.FC = () => {
         testName: labPatientTestLabel(p),
       }),
       bookingId: p.booking_id ?? null,
+      devices: p.devices ?? [],
+      packages: p.packages ?? [],
       time: formatLabSlotRange(p.slot_start_time, p.slot_end_time),
-      payment: 'Paid',
+      paymentStatus: p.payment_status ?? 'pending',
+      paymentMethod: p.payment_method ?? '',
       performDisabled: !canPerformTestNow(p),
     }));
 
@@ -806,9 +826,23 @@ const HomeScreen: React.FC = () => {
                 patientId={item.patientId}
                 testName={item.testName}
                 time={item.time}
-                payment={item.payment}
+                paymentStatus={item.paymentStatus}
+                paymentMethod={item.paymentMethod}
                 onSeeDetails={() => goTestDetails(item.labPatientRowId, 'upcoming')}
                 onPerformTest={() => {
+                  const allDevices = [
+                    ...item.devices,
+                    ...item.packages.flatMap(pkg => pkg.included_tests ?? []),
+                  ];
+                  if (allDevices.length > 1) {
+                    navigation.navigate('DeviceSelect', {
+                      patientName: item.patientName,
+                      bookingId: item.bookingId ?? null,
+                      devices: item.devices,
+                      packages: item.packages,
+                    });
+                    return;
+                  }
                   if (
                     applyLabIotPerformTestNavigation(
                       navigation.navigate,
@@ -1232,7 +1266,7 @@ const styles = StyleSheet.create({
   },
   upcomingPayRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 6,
   },
   rupeeBadge: {
@@ -1260,6 +1294,28 @@ const styles = StyleSheet.create({
   upcomingPayTextDue: {
     color: '#E65100',
     fontWeight: '600',
+  },
+  upcomingPayStack: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 3,
+  },
+  methodPill: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 10,
+    backgroundColor: COLORS.PRIMARY + '18',
+  },
+  methodPillDue: {
+    backgroundColor: '#E6510018',
+  },
+  methodPillText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.PRIMARY,
+  },
+  methodPillTextDue: {
+    color: '#E65100',
   },
   upcomingPerformBtn: {
     marginTop: SPACING.MD,

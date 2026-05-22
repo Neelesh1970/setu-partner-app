@@ -37,6 +37,7 @@ import {
   labPatientTestLabel,
   type LabPatientFilter,
   type LabPatientRecord,
+  type RawDeviceItem,
 } from './PreventiveHealthAPI';
 import axiosInstance, { isLabWorkerApiPath } from '../../../api/axiosInstance';
 import axios from 'axios';
@@ -144,7 +145,8 @@ function UpcomingStyleTestCard({
   patientId,
   testName,
   time,
-  payment,
+  paymentStatus,
+  paymentMethod,
   onSeeDetails,
   onPerformTest,
   performDisabled,
@@ -153,12 +155,19 @@ function UpcomingStyleTestCard({
   patientId: string;
   testName: string;
   time: string;
-  payment: string;
+  paymentStatus: string;
+  paymentMethod: string;
   onSeeDetails: () => void;
   onPerformTest: () => void;
   performDisabled: boolean;
 }) {
-  const paid = payment === 'Paid';
+  const isPaid = (paymentStatus || '').toLowerCase() === 'paid';
+  const statusLabel = paymentStatus
+    ? paymentStatus.charAt(0).toUpperCase() + paymentStatus.slice(1).toLowerCase()
+    : '—';
+  const methodLabel = paymentMethod
+    ? paymentMethod.charAt(0).toUpperCase() + paymentMethod.slice(1).toLowerCase()
+    : '';
   return (
     <View style={styles.card}>
       <View style={styles.cardTopRow}>
@@ -177,10 +186,19 @@ function UpcomingStyleTestCard({
           <Text style={styles.metaTimeText}>{time}</Text>
         </View>
         <View style={styles.metaRight}>
-          <View style={[styles.rupeeBadge, !paid ? styles.rupeeBadgeDue : null]}>
+          <View style={[styles.rupeeBadge, !isPaid ? styles.rupeeBadgeDue : null]}>
             <Text style={styles.rupeeSymbol}>₹</Text>
           </View>
-          <Text style={[styles.payLabel, !paid ? styles.payLabelDue : null]}>{payment}</Text>
+          <View style={styles.payStack}>
+            <Text style={[styles.payLabel, !isPaid ? styles.payLabelDue : null]}>{statusLabel}</Text>
+            {methodLabel ? (
+              <View style={[styles.methodPill, !isPaid ? styles.methodPillDue : null]}>
+                <Text style={[styles.methodPillText, !isPaid ? styles.methodPillTextDue : null]}>
+                  {methodLabel}
+                </Text>
+              </View>
+            ) : null}
+          </View>
         </View>
       </View>
       <TouchableOpacity
@@ -231,6 +249,7 @@ const TestActivity: React.FC = () => {
   const closeDeviceUnavailablePopup = useCallback(() => {
     setDeviceUnavailablePopupVisible(false);
   }, []);
+
 
   const displayPatients = useMemo(() => {
     const todayYmd = formatLocalYmd(new Date());
@@ -468,6 +487,80 @@ const TestActivity: React.FC = () => {
     [],
   );
 
+  /**
+   * Central perform-test handler.
+   * - If the patient has >1 device (standalone + package tests combined) → show selection modal.
+   * - If exactly 1 device → navigate directly.
+   * - If no structured device data → fall back to the flat-array picker (backward compat).
+   */
+  const handlePerformTest = useCallback(
+    (p: LabPatientRecord) => {
+      const standaloneDevices = p.devices ?? [];
+      const packageDevices = (p.packages ?? []).flatMap(pkg => pkg.included_tests ?? []);
+      const allDevices: RawDeviceItem[] = [...standaloneDevices, ...packageDevices];
+
+      console.log(
+        '[TestActivity] handlePerformTest — patient:', p.full_name,
+        '| standalone devices:', standaloneDevices.length,
+        '| package devices:', packageDevices.length,
+        '| total:', allDevices.length,
+        '| can_perform_test:', p.can_perform_test,
+        '| booking_id:', p.booking_id,
+      );
+
+      if (allDevices.length > 1) {
+        console.log('[TestActivity] multiple devices — navigating to DeviceSelect screen');
+        navigation.navigate('DeviceSelect', {
+          patientName: (p.full_name ?? '').trim() || '—',
+          bookingId: p.booking_id ?? null,
+          devices: p.devices ?? [],
+          packages: p.packages ?? [],
+        });
+        return;
+      }
+
+      // Single device: use structured item if available, otherwise fall back to flat arrays.
+      const picked =
+        allDevices.length === 1
+          ? {
+              deviceId: allDevices[0].device_id,
+              deviceName: allDevices[0].device_name,
+              bookingItemId: allDevices[0].booking_item_id,
+            }
+          : pickBackendDeviceByTestName({
+              deviceIds: p.device_ids ?? null,
+              deviceNames: p.device_names ?? null,
+              bookingItemIds: p.booking_item_ids ?? null,
+              testName: labPatientTestLabel(p),
+            });
+
+      console.log(
+        '[TestActivity] navigating to device — name:', picked.deviceName,
+        '| id:', picked.deviceId,
+        '| bookingItemId:', picked.bookingItemId,
+      );
+
+      if (
+        applyLabIotPerformTestNavigation(
+          navigation.navigate,
+          picked.deviceId,
+          picked.deviceName,
+          picked.bookingItemId,
+          p.booking_id ?? null,
+        )
+      ) {
+        return;
+      }
+
+      const nameForMsg = picked.deviceName ?? labPatientTestLabel(p);
+      console.log('[TestActivity] device unavailable for:', nameForMsg);
+      setDeviceUnavailablePopupMessage(`No device available for this ${nameForMsg}`);
+      setDeviceUnavailablePopupVisible(true);
+    },
+    [navigation.navigate],
+  );
+
+
   return (
     <>
       <StatusBar barStyle="light-content" backgroundColor={PRIMARY} />
@@ -540,32 +633,10 @@ const TestActivity: React.FC = () => {
                       patientId={String(p.user_id ?? p.id ?? '')}
                       testName={labPatientTestLabel(p)}
                       time={formatLabSlotRange(p.slot_start_time, p.slot_end_time)}
-                      payment="Paid"
+                      paymentStatus={p.payment_status ?? 'pending'}
+                      paymentMethod={p.payment_method ?? ''}
                       onSeeDetails={() => goTestDetails(p)}
-                      onPerformTest={() => {
-                        const picked = pickBackendDeviceByTestName({
-                          deviceIds: p.device_ids ?? null,
-                          deviceNames: p.device_names ?? null,
-                          bookingItemIds: p.booking_item_ids ?? null,
-                          testName: labPatientTestLabel(p),
-                        });
-                        if (
-                          applyLabIotPerformTestNavigation(
-                            navigation.navigate,
-                            picked.deviceId,
-                            picked.deviceName,
-                            picked.bookingItemId,
-                            p.booking_id ?? null,
-                          )
-                        ) {
-                          return;
-                        }
-                        const nameForMsg = picked.deviceName ?? labPatientTestLabel(p);
-                        setDeviceUnavailablePopupMessage(
-                          `No device available for this ${nameForMsg}`,
-                        );
-                        setDeviceUnavailablePopupVisible(true);
-                      }}
+                      onPerformTest={() => handlePerformTest(p)}
                       performDisabled={false}
                     />
                   ))}
@@ -579,32 +650,10 @@ const TestActivity: React.FC = () => {
                   patientId={String(p.user_id ?? p.id ?? '')}
                   testName={labPatientTestLabel(p)}
                   time={formatLabSlotRange(p.slot_start_time, p.slot_end_time)}
-                  payment="Paid"
+                  paymentStatus={p.payment_status ?? 'pending'}
+                  paymentMethod={p.payment_method ?? ''}
                   onSeeDetails={() => goTestDetails(p)}
-                  onPerformTest={() => {
-                    const picked = pickBackendDeviceByTestName({
-                      deviceIds: p.device_ids ?? null,
-                      deviceNames: p.device_names ?? null,
-                      bookingItemIds: p.booking_item_ids ?? null,
-                      testName: labPatientTestLabel(p),
-                    });
-                    if (
-                      applyLabIotPerformTestNavigation(
-                        navigation.navigate,
-                        picked.deviceId,
-                        picked.deviceName,
-                        picked.bookingItemId,
-                        p.booking_id ?? null,
-                      )
-                    ) {
-                      return;
-                    }
-                    const nameForMsg = picked.deviceName ?? labPatientTestLabel(p);
-                    setDeviceUnavailablePopupMessage(
-                      `No device available for this ${nameForMsg}`,
-                    );
-                    setDeviceUnavailablePopupVisible(true);
-                  }}
+                  onPerformTest={() => handlePerformTest(p)}
                   performDisabled={
                     // Enable only when current time is within the slot window (today),
                     // and backend hasn't explicitly blocked it.
@@ -942,8 +991,13 @@ const styles = StyleSheet.create({
   },
   metaRight: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: ms(6),
+  },
+  payStack: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: ms(3),
   },
   rupeeBadge: {
     width: ms(20),
@@ -970,6 +1024,23 @@ const styles = StyleSheet.create({
   payLabelDue: {
     color: '#E65100',
     fontWeight: '600',
+  },
+  methodPill: {
+    paddingHorizontal: ms(7),
+    paddingVertical: ms(2),
+    borderRadius: ms(10),
+    backgroundColor: PRIMARY + '18',
+  },
+  methodPillDue: {
+    backgroundColor: '#E6510018',
+  },
+  methodPillText: {
+    fontSize: ms(11),
+    fontWeight: '600',
+    color: PRIMARY,
+  },
+  methodPillTextDue: {
+    color: '#E65100',
   },
   performBtn: {
     marginTop: vs(14),
@@ -1095,4 +1166,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
 });
