@@ -15,13 +15,14 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import RazorpayCheckout from 'react-native-razorpay';
 import { RootStackParamList } from '../../navigation/types';
+import PreventiveHealthHeader from '../Home/PreventiveUser/PreventiveHealthHeader';
 import {
   createRegistrationOrder,
   confirmRegistration,
   initAutopay5,
   confirmAutopay5,
 } from '../../Services/authService';
-import { saveAuthData, saveRegisteredPatientAuthData, getLabUserId } from '../../Utils/storage';
+import { saveRegisteredPatientAuthData, getLabUserId } from '../../Utils/storage';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'RegisterPlans'>;
 type Route = RouteProp<RootStackParamList, 'RegisterPlans'>;
@@ -87,63 +88,87 @@ const RegisterPlans: React.FC = () => {
 
       RazorpayCheckout.open(options)
         .then(async (paymentData: any) => {
-          console.log('[YearlyPlan] Razorpay payment success:', JSON.stringify(paymentData, null, 2));
+          console.log('[YearlyPlan] ✅ Razorpay payment success — starting confirm flow');
+          console.log('[YearlyPlan] paymentData:', JSON.stringify(paymentData, null, 2));
           setLoading(true);
 
-          const confirmPayload = {
-            firstName,
-            lastName,
-            phoneNumber: mobile,
-            dob,
-            gender,
-            email: 'test@example.com',
-            username: mobile,
-            password: 'Pass@123',
-            confirmPassword: 'Pass@123',
-            razorpay_order_id: paymentData.razorpay_order_id,
-            razorpay_payment_id: paymentData.razorpay_payment_id,
-            razorpay_signature: paymentData.razorpay_signature,
-            lab_user_id: storedLabUserId ?? lab_user_id,
-          };
-          console.log('[YearlyPlan] confirmRegistration payload:', JSON.stringify(confirmPayload, null, 2));
+          // Wrap the entire post-payment flow in its own try/catch so any error
+          // (API failure, parsing, navigation) is handled here and does NOT leak
+          // into the Razorpay .catch() below (which is for Razorpay-specific errors only).
+          try {
+            const confirmPayload = {
+              firstName,
+              lastName,
+              phoneNumber: mobile,
+              dob,
+              gender,
+              email: 'test@example.com',
+              username: mobile,
+              password: 'Pass@123',
+              confirmPassword: 'Pass@123',
+              razorpay_order_id: paymentData.razorpay_order_id,
+              razorpay_payment_id: paymentData.razorpay_payment_id,
+              razorpay_signature: paymentData.razorpay_signature,
+              lab_user_id: storedLabUserId ?? lab_user_id,
+            };
+            console.log('[YearlyPlan] confirmRegistration payload:', JSON.stringify(confirmPayload, null, 2));
 
-          const confirmRes = await confirmRegistration(confirmPayload);
+            const confirmRes = await confirmRegistration(confirmPayload);
+            console.log('[YearlyPlan] RAW confirmRes (full):', JSON.stringify(confirmRes, null, 2));
 
-          console.log('[YearlyPlan] CONFIRM RESPONSE:', JSON.stringify(confirmRes, null, 2));
+            // Try multiple response shapes — backend may nest differently.
+            const token =
+              confirmRes?.data?.response?.token ??
+              (confirmRes as any)?.data?.token ??
+              (confirmRes as any)?.token;
+            const refreshToken =
+              confirmRes?.data?.response?.refreshToken ??
+              (confirmRes as any)?.data?.refreshToken ??
+              (confirmRes as any)?.refreshToken;
+            const userID =
+              confirmRes?.data?.response?.user?.user_id ??
+              (confirmRes as any)?.data?.user?.user_id ??
+              (confirmRes as any)?.user?.user_id;
 
-          const token = confirmRes?.data?.response?.token;
-          const refreshToken = confirmRes?.data?.response?.refreshToken;
-          const userID = confirmRes?.data?.response?.user?.user_id;
+            console.log('========== NEW USER TOKENS (created under Lab User ID) ==========');
+            console.log('Lab User ID    :', storedLabUserId ?? lab_user_id);
+            console.log('User Token     :', token ?? 'MISSING');
+            console.log('Refresh Token  :', refreshToken ?? 'MISSING');
+            console.log('User ID        :', userID ?? 'MISSING');
+            console.log('==================================================================');
 
-          console.log('[YearlyPlan] token:', token, '| refreshToken:', refreshToken, '| userID:', userID);
+            if (!token || !userID) {
+              console.warn('[YearlyPlan] ❌ token or userID missing after confirmRegistration — check RAW confirmRes above');
+              Alert.alert('Error', 'Registration confirmed but session data missing. Please try again.');
+              return;
+            }
 
-          console.log('========== NEW USER TOKENS (created under Lab User ID) ==========');
-          console.log('Lab User ID    :', storedLabUserId ?? lab_user_id);
-          console.log('User Token     :', token);
-          console.log('Refresh Token  :', refreshToken);
-          console.log('User ID        :', userID);
-          console.log('==================================================================');
+            // Save patient tokens to patient-only keys — do NOT call saveAuthData here.
+            // saveAuthData would overwrite the lab worker's AUTH_TOKEN/REFRESH_TOKEN.
+            await saveRegisteredPatientAuthData(token, String(userID), refreshToken);
+            console.log('[YearlyPlan] ✅ Patient auth saved to patient-only keys (lab worker session preserved)');
+            console.log('[YearlyPlan] ✅ Calling navigation.reset → [Home, PreventiveHealth]');
 
-          if (!token || !userID) {
-            console.warn('[YearlyPlan] token or userID missing — aborting navigation');
-            Alert.alert('Error', 'Session missing after payment.');
-            return;
+            navigation.reset({
+              index: 1,
+              routes: [{ name: 'Home' }, { name: 'PreventiveHealth' }],
+            });
+          } catch (confirmErr: any) {
+            console.error('[YearlyPlan] ❌ Error inside post-payment flow:', confirmErr?.message, confirmErr);
+            Alert.alert('Error', confirmErr?.message || 'Something went wrong after payment. Please contact support.');
+          } finally {
+            setLoading(false);
           }
-
-          await saveAuthData(token, String(userID), refreshToken);
-          await saveRegisteredPatientAuthData(token, String(userID), refreshToken);
-          console.log('[YearlyPlan] Auth data saved, navigating to PreventiveHealth');
-
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'PreventiveHealth' }],
-          });
         })
-        .catch((error: any) => {
-          console.error('[YearlyPlan] Razorpay error:', JSON.stringify(error, null, 2));
-          if (error?.code !== 0) {
-            Alert.alert('Payment Failed', error?.description);
+        .catch((razorpayError: any) => {
+          // This catch is ONLY for Razorpay-level errors (e.g. user dismissed, network).
+          // Post-payment errors are handled inside the .then() try/catch above.
+          console.log('[YearlyPlan] Razorpay catch — code:', razorpayError?.code, '| description:', razorpayError?.description);
+          if (razorpayError?.code !== 0) {
+            // code 0 = user dismissed, not an error
+            Alert.alert('Payment Failed', razorpayError?.description ?? 'Payment could not be completed.');
           }
+          setLoading(false);
         });
     } catch (err: any) {
       console.error('[YearlyPlan] Caught error:', err?.message, err);
@@ -203,66 +228,83 @@ const RegisterPlans: React.FC = () => {
 
       RazorpayCheckout.open(options)
         .then(async (paymentData: any) => {
-          console.log('[TrialPlan] Razorpay payment success:', JSON.stringify(paymentData, null, 2));
-          console.log('[TrialPlan] razorpay_payment_id:', paymentData?.razorpay_payment_id);
-          console.log('[TrialPlan] razorpay_order_id:', paymentData?.razorpay_order_id);
-          console.log('[TrialPlan] razorpay_subscription_id:', paymentData?.razorpay_subscription_id);
-          console.log('[TrialPlan] razorpay_signature:', paymentData?.razorpay_signature);
+          console.log('[TrialPlan] ✅ Razorpay payment success — starting confirm flow');
+          console.log('[TrialPlan] paymentData:', JSON.stringify(paymentData, null, 2));
           setLoading(true);
 
-          const confirmPayload = {
-            firstName,
-            lastName,
-            phoneNumber: mobile,
-            dob,
-            gender,
-            customerId: customerId!,
-            razorpay_subscription_id:
-              paymentData.razorpay_subscription_id ?? subscriptionId,
-            razorpay_payment_id: paymentData.razorpay_payment_id,
-            razorpay_signature: paymentData.razorpay_signature,
-            razorpay_order_id: paymentData.razorpay_order_id,
-            lab_user_id: storedLabUserId ?? lab_user_id,
-          };
-          console.log('[TrialPlan] confirmAutopay5 payload:', JSON.stringify(confirmPayload, null, 2));
+          // Wrap the entire post-payment flow in its own try/catch so any error
+          // does NOT leak into the Razorpay .catch() below.
+          try {
+            const confirmPayload = {
+              firstName,
+              lastName,
+              phoneNumber: mobile,
+              dob,
+              gender,
+              customerId: customerId!,
+              razorpay_subscription_id:
+                paymentData.razorpay_subscription_id ?? subscriptionId,
+              razorpay_payment_id: paymentData.razorpay_payment_id,
+              razorpay_signature: paymentData.razorpay_signature,
+              razorpay_order_id: paymentData.razorpay_order_id,
+              lab_user_id: storedLabUserId ?? lab_user_id,
+            };
+            console.log('[TrialPlan] confirmAutopay5 payload:', JSON.stringify(confirmPayload, null, 2));
 
-          const confirmRes = await confirmAutopay5(confirmPayload);
+            const confirmRes = await confirmAutopay5(confirmPayload);
+            console.log('[TrialPlan] RAW confirmRes (full):', JSON.stringify(confirmRes, null, 2));
 
-          console.log('[TrialPlan] SUBSCRIPTION CONFIRM RESPONSE:', JSON.stringify(confirmRes, null, 2));
+            // Try multiple response shapes — backend may nest differently.
+            const token =
+              confirmRes?.token ??
+              (confirmRes as any)?.data?.token ??
+              (confirmRes as any)?.data?.response?.token;
+            const refreshToken =
+              confirmRes?.refreshToken ??
+              (confirmRes as any)?.data?.refreshToken ??
+              (confirmRes as any)?.data?.response?.refreshToken;
+            const userID =
+              confirmRes?.user?.user_id ??
+              (confirmRes as any)?.data?.user?.user_id ??
+              (confirmRes as any)?.data?.response?.user?.user_id;
 
-          const token = confirmRes?.token;
-          const refreshToken = confirmRes?.refreshToken;
-          const userID = confirmRes?.user?.user_id;
+            console.log('========== NEW USER TOKENS (created under Lab User ID) ==========');
+            console.log('Lab User ID    :', storedLabUserId ?? lab_user_id);
+            console.log('User Token     :', token ?? 'MISSING');
+            console.log('Refresh Token  :', refreshToken ?? 'MISSING');
+            console.log('User ID        :', userID ?? 'MISSING');
+            console.log('==================================================================');
 
-          console.log('[TrialPlan] token:', token, '| refreshToken:', refreshToken, '| userID:', userID);
+            if (!token || !userID) {
+              console.warn('[TrialPlan] ❌ token or userID missing after confirmAutopay5 — check RAW confirmRes above');
+              Alert.alert('Error', 'Registration confirmed but session data missing. Please try again.');
+              return;
+            }
 
-          console.log('========== NEW USER TOKENS (created under Lab User ID) ==========');
-          console.log('Lab User ID    :', storedLabUserId ?? lab_user_id);
-          console.log('User Token     :', token);
-          console.log('Refresh Token  :', refreshToken);
-          console.log('User ID        :', userID);
-          console.log('==================================================================');
+            // Save patient tokens to patient-only keys — do NOT call saveAuthData here.
+            // saveAuthData would overwrite the lab worker's AUTH_TOKEN/REFRESH_TOKEN.
+            await saveRegisteredPatientAuthData(token, String(userID), refreshToken);
+            console.log('[TrialPlan] ✅ Patient auth saved to patient-only keys (lab worker session preserved)');
+            console.log('[TrialPlan] ✅ Calling navigation.reset → [Home, PreventiveHealth]');
 
-          if (!token || !userID) {
-            console.warn('[TrialPlan] token or userID missing — aborting navigation');
-            Alert.alert('Error', 'Session missing after subscription.');
-            return;
+            navigation.reset({
+              index: 1,
+              routes: [{ name: 'Home' }, { name: 'PreventiveHealth' }],
+            });
+          } catch (confirmErr: any) {
+            console.error('[TrialPlan] ❌ Error inside post-payment flow:', confirmErr?.message, confirmErr);
+            Alert.alert('Error', confirmErr?.message || 'Something went wrong after payment. Please contact support.');
+          } finally {
+            setLoading(false);
           }
-
-          await saveAuthData(token, String(userID), refreshToken);
-          await saveRegisteredPatientAuthData(token, String(userID), refreshToken);
-          console.log('[TrialPlan] Auth data saved, navigating to PreventiveHealth');
-
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'PreventiveHealth' }],
-          });
         })
-        .catch((error: any) => {
-          console.error('[TrialPlan] Razorpay error:', JSON.stringify(error, null, 2));
-          if (error?.code !== 0) {
-            Alert.alert('Payment Failed', error?.description);
+        .catch((razorpayError: any) => {
+          // This catch is ONLY for Razorpay-level errors (e.g. user dismissed, network).
+          console.log('[TrialPlan] Razorpay catch — code:', razorpayError?.code, '| description:', razorpayError?.description);
+          if (razorpayError?.code !== 0) {
+            Alert.alert('Payment Failed', razorpayError?.description ?? 'Payment could not be completed.');
           }
+          setLoading(false);
         });
     } catch (err: any) {
       console.error('[TrialPlan] Caught error:', err?.message, err);
@@ -285,13 +327,19 @@ const RegisterPlans: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#EDEDED" />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#1C39BB" />
+      <View style={styles.headerShell}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <PreventiveHealthHeader
+            showBack
+            title=""
+            onBackPress={() => navigation.goBack()}
+          />
+        </SafeAreaView>
+      </View>
 
-      <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-        <Text style={styles.backArrow}>←</Text>
-      </TouchableOpacity>
-
+      <SafeAreaView edges={['bottom']} style={styles.flex}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -386,7 +434,8 @@ const RegisterPlans: React.FC = () => {
           </TouchableOpacity>
         </View>
       </ScrollView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 };
 
@@ -397,12 +446,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#EDEDED',
   },
-  backBtn: {
-    padding: 16,
+  headerShell: {
+    backgroundColor: '#1C39BB',
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    overflow: 'hidden',
   },
-  backArrow: {
-    fontSize: 24,
-    color: '#222',
+  headerSafe: {
+    backgroundColor: '#1C39BB',
+  },
+  flex: {
+    flex: 1,
   },
   scrollContent: {
     flexGrow: 1,

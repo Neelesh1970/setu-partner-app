@@ -71,7 +71,7 @@
 
 
 import axios from "axios";
-import { getAuthToken, getRefreshToken } from "../../../Utils/storage";
+import { getRegisteredPatientAuthToken, getRegisteredPatientRefreshToken } from "../../../Utils/storage";
 import { getPreventiveCartStore } from "../../../Utils/preventiveCartStore";
 import axiosInstance from "../../../api/axiosInstance";
 
@@ -90,11 +90,16 @@ const api = axios.create({
 /* ================= TOKEN HANDLING ================= */
 
 const getAuthHeaders = async () => {
+  // Use the patient-specific token keys — these hold the newly registered
+  // patient's session from RegisterPlans (saveRegisteredPatientAuthData).
+  // The primary AUTH_TOKEN/REFRESH_TOKEN always stay as the lab worker's session
+  // and must not be used here for patient-facing API calls.
   const [accessToken, refreshToken] = await Promise.all([
-    getAuthToken(),
-    getRefreshToken(),
+    getRegisteredPatientAuthToken(),
+    getRegisteredPatientRefreshToken(),
   ]);
 
+  console.log('[PreventiveHealthAPI] getAuthHeaders — patient token present:', Boolean(accessToken));
   return {
     Authorization: `Bearer ${accessToken ?? ""}`,
     "x-refresh-token": refreshToken ?? "",
@@ -459,13 +464,10 @@ type LabPatientsApiResponse = {
 export const getLabPatients = async (
   filter: LabPatientFilter,
 ): Promise<LabPatientRecord[]> => {
-  console.log('[getLabPatients] fetching, filter:', filter);
   const res = await axiosInstance.get<LabPatientsApiResponse>("lab/patients", {
     params: { filter },
   });
-  console.log('[getLabPatients] response success:', res.data?.success, 'message:', res.data?.message);
   const list = res.data?.data?.patients;
-  console.log('[getLabPatients] patients count:', Array.isArray(list) ? list.length : 0);
   if (!Array.isArray(list)) return [];
 
   return list.map((raw): LabPatientRecord => {
@@ -479,14 +481,6 @@ export const getLabPatients = async (
     const device_ids = allDevices.map(d => d.device_id).filter(Boolean);
     const booking_item_ids = allDevices.map(d => d.booking_item_id).filter(Boolean);
     const package_names = pkgs.map(pkg => pkg.package_name).filter(Boolean);
-
-    console.log(
-      '[getLabPatients] patient:', raw.full_name,
-      '| standalone devices:', standaloneDevices.length,
-      '| packages:', pkgs.length,
-      '| total devices:', allDevices.length,
-      '| can_perform_test:', raw.can_perform_test,
-    );
 
     return {
       id: raw.id,

@@ -9,6 +9,7 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  BackHandler,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRoute } from "@react-navigation/native";
@@ -66,6 +67,26 @@ export default function PreventiveCheckout({ navigation }: any) {
       console.log("[PreventiveCheckout] booking id:", bookingId);
     }
   }, [bookingId]);
+
+  useEffect(() => {
+    let isNavigating = false;
+
+    const handleBack = () => {
+      if (isNavigating) return true;
+      isNavigating = true;
+      navigation.goBack();
+      return true;
+    };
+
+    let backSub: any;
+    if (Platform.OS === "android") {
+      backSub = BackHandler.addEventListener("hardwareBackPress", handleBack);
+    }
+
+    return () => {
+      backSub?.remove();
+    };
+  }, [navigation]);
 
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);

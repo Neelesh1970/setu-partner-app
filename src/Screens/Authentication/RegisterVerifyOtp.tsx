@@ -11,6 +11,7 @@ import {
   Platform,
   ActivityIndicator,
   ScrollView,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -23,7 +24,8 @@ import {
   resendExistingUserOtpRegFlow,
   resendNewUserOtpRegFlow,
 } from '../../Services/authService';
-import { saveAuthData } from '../../Utils/storage';
+import { saveRegisteredPatientAuthData, getLabUserId } from '../../Utils/storage';
+import PreventiveHealthHeader from '../Home/PreventiveUser/PreventiveHealthHeader';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'RegisterVerifyOtp'>;
 type Route = RouteProp<RootStackParamList, 'RegisterVerifyOtp'>;
@@ -43,6 +45,26 @@ const RegisterVerifyOtp: React.FC = () => {
   const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
+    let isNavigating = false;
+
+    const handleBack = () => {
+      if (isNavigating) return true;
+      isNavigating = true;
+      navigation.replace("RegisterWithOtp");
+      return true;
+    };
+
+    let backSub: any;
+    if (Platform.OS === "android") {
+      backSub = BackHandler.addEventListener("hardwareBackPress", handleBack);
+    }
+
+    return () => {
+      backSub?.remove();
+    };
+  }, [navigation]);
+
+  useEffect(() => {
     if (resendTimer <= 0) { return; }
     const id = setInterval(() => setResendTimer(t => t - 1), 1000);
     return () => clearInterval(id);
@@ -60,19 +82,27 @@ const RegisterVerifyOtp: React.FC = () => {
     setLoading(true);
     try {
       if (alreadyRegistered) {
+        console.log('[RegisterVerifyOtp] alreadyRegistered=true — verifying existing patient OTP');
         const res = await verifySmartpingOtp({ mobile, otp });
         const token = res?.token ?? res?.data?.token;
         const userID = res?.userID ?? res?.userId ?? res?.user_id ?? res?.data?.userID ?? res?.data?.userId ?? res?.data?.user_id ?? res?.user?.id;
         const refreshToken = res?.refreshToken ?? res?.data?.refreshToken;
+        console.log('[RegisterVerifyOtp] alreadyRegistered — token:', token ? 'present' : 'MISSING', '| userID:', userID);
         if (!token || !userID) {
           Alert.alert('Login Failed', 'Could not retrieve session. Please try again.');
           return;
         }
-        await saveAuthData(token, String(userID), refreshToken);
-        navigation.reset({ index: 0, routes: [{ name: 'Dashboard' }] });
+        // Save ONLY to patient-specific keys — do NOT touch lab worker's AUTH_TOKEN/REFRESH_TOKEN.
+        await saveRegisteredPatientAuthData(token, String(userID), refreshToken);
+        console.log('[RegisterVerifyOtp] alreadyRegistered — patient auth saved, navigating to PreventiveHealth');
+        navigation.reset({ index: 1, routes: [{ name: 'Home' }, { name: 'PreventiveHealth' }] });
       } else {
+        console.log('[RegisterVerifyOtp] New user OTP verified — reading stored lab_user_id');
         const res = await verifyRegistrationOtpRegFlow({ mobile, otp });
-        const lab_user_id = res?.user?.id ?? '';
+        // Use the lab worker's own stored ID (set during login/register OTP).
+        // Do NOT use res?.user?.id here — that belongs to the new patient, not the lab worker.
+        const lab_user_id = (await getLabUserId()) ?? '';
+        console.log('[RegisterVerifyOtp] lab_user_id from storage:', lab_user_id || 'EMPTY — lab worker may not have logged in via OTP flow');
         navigation.navigate('RegisterName', { mobile, lab_user_id });
       }
     } catch (err: any) {
@@ -104,22 +134,23 @@ const RegisterVerifyOtp: React.FC = () => {
   const otpBoxes = Array.from({ length: OTP_LENGTH }, (_, i) => otp[i] ?? '');
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#EDEDED" />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-        style={styles.flex}
-      >
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#1C39BB" />
+      <View style={styles.headerShell}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <PreventiveHealthHeader
+            showBack
+            title=""
+            onBackPress={() => navigation.goBack()}
+          />
+        </SafeAreaView>
+      </View>
+      <SafeAreaView edges={['bottom']} style={styles.flex}>
         <ScrollView
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
-          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-            <Text style={styles.backArrow}>←</Text>
-          </TouchableOpacity>
-
           <View style={styles.bottomCard}>
             <Text style={styles.title}>Verify OTP</Text>
             <Text style={styles.subtitle}>
@@ -129,7 +160,12 @@ const RegisterVerifyOtp: React.FC = () => {
 
             <TouchableOpacity
               activeOpacity={1}
-              onPress={() => inputRef.current?.focus()}
+              onPress={() => {
+                inputRef.current?.blur();
+                setTimeout(() => {
+                  inputRef.current?.focus();
+                }, 50);
+              }}
               style={styles.otpRow}
             >
               {otpBoxes.map((digit, i) => (
@@ -149,7 +185,7 @@ const RegisterVerifyOtp: React.FC = () => {
               value={otp}
               onChangeText={handleOtpChange}
               maxLength={OTP_LENGTH}
-              autoFocus
+              // autoFocus
             />
 
             <TouchableOpacity
@@ -180,8 +216,8 @@ const RegisterVerifyOtp: React.FC = () => {
             </View>
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 };
 
@@ -192,18 +228,20 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#EDEDED',
   },
+  headerShell: {
+    backgroundColor: '#1C39BB',
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    overflow: 'hidden',
+  },
+  headerSafe: {
+    backgroundColor: '#1C39BB',
+  },
   flex: {
     flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
-  },
-  backBtn: {
-    padding: 16,
-  },
-  backArrow: {
-    fontSize: 24,
-    color: '#222',
   },
   bottomCard: {
     marginTop: 'auto',
@@ -258,8 +296,8 @@ const styles = StyleSheet.create({
   hiddenInput: {
     position: 'absolute',
     opacity: 0,
-    width: 0,
-    height: 0,
+    width: 1,
+    height: 1,
   },
   button: {
     marginTop: 28,

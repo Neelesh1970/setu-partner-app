@@ -1,4 +1,4 @@
-import axiosInstance, { BASE_URL } from './axiosInstance';
+import axiosInstance from './axiosInstance';
 
 // ─── Pulse Oximeter ──────────────────────────────────────────────────────────
 
@@ -29,23 +29,10 @@ export async function postPulseOximeterResult(
     pulse_rate: pulseRate,
     booking_item_id: bookingItemId,
   };
-  const LOG = '[postPulseOximeterResult]';
-  console.log(`${LOG} POST start`);
-  console.log(`${LOG} POST URL:`, `${BASE_URL}/${path}`);
-  console.log(`${LOG} POST body:`, JSON.stringify(body, null, 2));
   try {
     const res = await axiosInstance.post<PostPulseOximeterResultResponse>(path, body);
-    console.log(`${LOG} POST status:`, res.status);
-    console.log(`${LOG} POST response:`, JSON.stringify(res.data ?? {}, null, 2));
     return res.data ?? {};
   } catch (err) {
-    const e = err as {
-      response?: { status?: number; data?: unknown };
-      message?: string;
-    };
-    console.log(`${LOG} POST FAILED status:`, e?.response?.status ?? 'no-status');
-    console.log(`${LOG} POST FAILED data:`, JSON.stringify(e?.response?.data ?? {}, null, 2));
-    console.log(`${LOG} POST FAILED message:`, e?.message ?? '(none)');
     throw err;
   }
 }
@@ -81,23 +68,10 @@ export async function postBmiResult(
     bmi,
     ph_booking_item_id: bookingItemId,
   };
-  const LOG = '[postBmiResult]';
-  console.log(`${LOG} POST start`);
-  console.log(`${LOG} POST URL:`, `${BASE_URL}/${path}`);
-  console.log(`${LOG} POST body:`, JSON.stringify(body, null, 2));
   try {
     const res = await axiosInstance.post<PostBmiResultResponse>(path, body);
-    console.log(`${LOG} POST status:`, res.status);
-    console.log(`${LOG} POST response:`, JSON.stringify(res.data ?? {}, null, 2));
     return res.data ?? {};
   } catch (err) {
-    const e = err as {
-      response?: { status?: number; data?: unknown };
-      message?: string;
-    };
-    console.log(`${LOG} POST FAILED status:`, e?.response?.status ?? 'no-status');
-    console.log(`${LOG} POST FAILED data:`, JSON.stringify(e?.response?.data ?? {}, null, 2));
-    console.log(`${LOG} POST FAILED message:`, e?.message ?? '(none)');
     throw err;
   }
 }
@@ -144,22 +118,10 @@ export async function postRemidioQrResult(
     examID,
     result,
   };
-  console.log(`${LOG} POST start`);
-  console.log(`${LOG} POST URL:`, `${BASE_URL}/${path}`);
-  console.log(`${LOG} POST body:`, JSON.stringify(body, null, 2));
   try {
     const res = await axiosInstance.post<PostRemidioQrResultResponse>(path, body);
-    console.log(`${LOG} POST status:`, res.status);
-    console.log(`${LOG} POST response:`, JSON.stringify(res.data ?? {}, null, 2));
     return res.data ?? {};
   } catch (err) {
-    const e = err as {
-      response?: { status?: number; data?: unknown };
-      message?: string;
-    };
-    console.log(`${LOG} POST FAILED status:`, e?.response?.status ?? 'no-status');
-    console.log(`${LOG} POST FAILED data:`, JSON.stringify(e?.response?.data ?? {}, null, 2));
-    console.log(`${LOG} POST FAILED message:`, e?.message ?? '(none)');
     throw err;
   }
 }

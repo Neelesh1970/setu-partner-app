@@ -17,6 +17,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/types';
 import { sendNewUserOtp, sendExistingUserOtpRegFlow } from '../../Services/authService';
+import PreventiveHealthHeader from '../Home/PreventiveUser/PreventiveHealthHeader';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'RegisterWithOtp'>;
 
@@ -58,23 +59,25 @@ const RegisterWithOtp: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#EDEDED" />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-        style={styles.flex}
-      >
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#1C39BB" />
+      <View style={styles.headerShell}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <PreventiveHealthHeader showBack title="" />
+        </SafeAreaView>
+      </View>
+      <SafeAreaView edges={['bottom']} style={styles.flex}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+          style={styles.flex}
         >
-          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-            <Text style={styles.backArrow}>←</Text>
-          </TouchableOpacity>
-
-          <View style={styles.bottomCard}>
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
+          >
+            <View style={styles.bottomCard}>
             <Text style={styles.title}>Register New User</Text>
             <Text style={styles.subtitle}>Enter mobile number to get started.</Text>
 
@@ -104,10 +107,11 @@ const RegisterWithOtp: React.FC = () => {
                 <Text style={styles.buttonText}>Continue</Text>
               )}
             </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 };
 
@@ -118,18 +122,20 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#EDEDED',
   },
+  headerShell: {
+    backgroundColor: '#1C39BB',
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    overflow: 'hidden',
+  },
+  headerSafe: {
+    backgroundColor: '#1C39BB',
+  },
   flex: {
     flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
-  },
-  backBtn: {
-    padding: 16,
-  },
-  backArrow: {
-    fontSize: 24,
-    color: '#222',
   },
   bottomCard: {
     marginTop: 'auto',
@@ -181,7 +187,7 @@ const styles = StyleSheet.create({
   },
   button: {
     marginTop: 32,
-    backgroundColor: '#2F3DBD',
+    backgroundColor: '#1C39BB',
     paddingVertical: 16,
     borderRadius: 30,
     alignItems: 'center',

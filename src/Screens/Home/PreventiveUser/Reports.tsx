@@ -535,19 +535,7 @@
           baseURL: axiosInstance.defaults.baseURL,
           url: path,
         });
-        console.log('[report] booking_id:', id);
-        console.log('[report] path (relative to baseURL):', path);
-        console.log('[report] axiosInstance.defaults.baseURL:', axiosInstance.defaults.baseURL);
-        console.log('[report] apiConfig.BASE_URL:', BASE_URL);
-        console.log('[report] resolved absolute GET URL:', resolvedUrl);
-        console.log(
-          '[report] axios will send lab-worker JWT:',
-          isLabWorkerApiPath(path),
-          '(must be true for /reports/* — patient token often gets "Report not found")',
-        );
         const res = await axiosInstance.get<ReportByBookingResponse>(path);
-        console.log('[report] status:', res.status);
-        console.log('[report] body:', res.data);
 
         if (!res.data?.success) {
           throw new Error(res.data?.message || 'Failed to load report');
@@ -558,7 +546,6 @@
           throw new Error('Report URL not available');
         }
 
-        console.log('[report] report_url:', url);
         setReportUrl(url);
       } catch (e) {
         const err = e as Error & { status?: number; responseData?: unknown };
@@ -635,7 +622,6 @@
     useEffect(() => {
       if (autoOpenBookingId && !autoOpenTriggeredRef.current) {
         autoOpenTriggeredRef.current = true;
-        console.log('[Reports] auto-opening report for bookingId:', autoOpenBookingId);
         openReportByBookingId(autoOpenBookingId);
       }
     // openReportByBookingId has empty deps and is stable; autoOpenBookingId is from route params (stable)
@@ -928,15 +914,12 @@
                     incognito
                     cacheEnabled={false}
                     onLoadStart={() => {
-                      console.log('[report] WebView onLoadStart');
                       setViewerLoading(true);
                     }}
                     onLoadEnd={() => {
-                      console.log('[report] WebView onLoadEnd');
                       setViewerLoading(false);
                     }}
                     onError={(e: any) => {
-                      console.log('[report] WebView error:', e?.nativeEvent);
                       setViewerLoading(false);
                       setReportError('Something went wrong while opening the report.');
                     }}

@@ -161,7 +161,8 @@ export default function PreventiveHealth({ navigation }: any) {
     const handleBack = () => {
       if (isNavigating) return true;
       isNavigating = true;
-      navigation.replace("ReportsHome");
+      console.log('[PreventiveHealth] Hardware back pressed — navigating to Home');
+      navigation.navigate("Home");
       return true;
     };
 

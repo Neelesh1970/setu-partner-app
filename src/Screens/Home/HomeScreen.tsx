@@ -762,6 +762,20 @@ const HomeScreen: React.FC = () => {
             onAvatarPress={() => navigation.navigate('Profile')}
             rightSlot={
               <View style={styles.headerActions}>
+                {/* DEV: quick nav to PreventiveHealth for flow testing */}
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('PreventiveHealth')}
+                  style={styles.headerAction}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Preventive Health"
+                >
+                  <Ionicons
+                    name="medkit-outline"
+                    size={24}
+                    color={COLORS.WHITE}
+                  />
+                </TouchableOpacity>
                 <TouchableOpacity
                   onPress={goReports}
                   style={styles.headerAction}
