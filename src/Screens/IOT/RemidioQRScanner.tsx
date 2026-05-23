@@ -856,11 +856,7 @@ const RemidioQRScanner = ({ onBack }: RemidioQRScannerProps) => {
    * Posts QR result to the backend, then shows the Generate PDF modal.
    */
   const handleDone = async (): Promise<void> => {
-    console.log('[RemidioQRScanner] handleDone pressed');
     if (!scanResult) {
-      console.log(
-        '[RemidioQRScanner] handleDone: no scanResult, closing modal',
-      );
       setModalVisible(false);
       setScanned(false);
       setQrValue('');
@@ -869,16 +865,6 @@ const RemidioQRScanner = ({ onBack }: RemidioQRScannerProps) => {
     }
 
     setIsDoneLoading(true);
-    console.log(
-      '[RemidioQRScanner] handleDone: submitting QR result to backend',
-    );
-    console.log('[RemidioQRScanner] handleDone route params =', {
-      deviceId: routeDeviceId,
-      deviceName: routeDeviceName,
-      bookingItemId: routeBookingItemId,
-      bookingId: routeBookingId,
-      examID: scanResult.examID,
-    });
 
     try {
       if (routeDeviceId && routeBookingItemId) {
@@ -886,20 +872,13 @@ const RemidioQRScanner = ({ onBack }: RemidioQRScannerProps) => {
           deviceId: routeDeviceId,
           bookingItemId: routeBookingItemId,
           examID: scanResult.examID,
-          result: scanResult.result as unknown as Record<string, unknown>,
+          result: {
+            ...(scanResult.result['R-Avg'] ? { R1: scanResult.result['R-Avg'] } : {}),
+            ...(scanResult.result['L-Avg'] ? { L1: scanResult.result['L-Avg'] } : {}),
+          } as Record<string, unknown>,
         });
-        console.log(
-          '[RemidioQRScanner] handleDone: POST qr-results success',
-          res,
-        );
-      } else {
-        console.log(
-          '[RemidioQRScanner] handleDone: skipping POST — missing deviceId or bookingItemId',
-          { deviceId: routeDeviceId, bookingItemId: routeBookingItemId },
-        );
       }
     } catch (err) {
-      console.log('[RemidioQRScanner] handleDone: POST qr-results failed', err);
     } finally {
       setIsDoneLoading(false);
     }
@@ -915,7 +894,6 @@ const RemidioQRScanner = ({ onBack }: RemidioQRScannerProps) => {
     }
 
     // Single-device flow: show Generate PDF modal as before.
-    console.log('[RemidioQRScanner] handleDone: showing Generate PDF modal');
     setPdfModalVisible(true);
   };
 
@@ -924,16 +902,7 @@ const RemidioQRScanner = ({ onBack }: RemidioQRScannerProps) => {
    * Calls reports/payload/pdf with the bookingId, then navigates to Reports.
    */
   const handleGeneratePdf = async (): Promise<void> => {
-    console.log('[RemidioQRScanner] handleGeneratePdf pressed');
-    console.log(
-      '[RemidioQRScanner] handleGeneratePdf bookingId =',
-      routeBookingId,
-    );
-
     if (!routeBookingId) {
-      console.log(
-        '[RemidioQRScanner] handleGeneratePdf: no bookingId available, navigating to Reports anyway',
-      );
       setPdfModalVisible(false);
       navigation.replace('Reports');
       return;
@@ -942,54 +911,19 @@ const RemidioQRScanner = ({ onBack }: RemidioQRScannerProps) => {
     setIsPdfLoading(true);
     try {
       const pdfBody = { bookingId: routeBookingId };
-      console.log(
-        '[RemidioQRScanner] handleGeneratePdf: POST reports/payload/pdf body =',
-        JSON.stringify(pdfBody, null, 2),
-      );
-
-      const pdfRes = await axiosInstance.post('reports/payload/pdf', pdfBody);
-      console.log(
-        '[RemidioQRScanner] handleGeneratePdf: POST reports/payload/pdf status =',
-        pdfRes.status,
-      );
-      console.log(
-        '[RemidioQRScanner] handleGeneratePdf: POST reports/payload/pdf response =',
-        JSON.stringify(pdfRes.data ?? {}, null, 2),
-      );
-    } catch (err) {
-      const e = err as {
-        response?: { status?: number; data?: unknown };
-        message?: string;
-      };
-      console.log(
-        '[RemidioQRScanner] handleGeneratePdf: POST reports/payload/pdf FAILED status =',
-        e?.response?.status ?? 'no-status',
-      );
-      console.log(
-        '[RemidioQRScanner] handleGeneratePdf: POST reports/payload/pdf FAILED data =',
-        JSON.stringify(e?.response?.data ?? {}, null, 2),
-      );
-      console.log(
-        '[RemidioQRScanner] handleGeneratePdf: POST reports/payload/pdf FAILED message =',
-        e?.message ?? '(none)',
-      );
+      await axiosInstance.post('reports/payload/pdf', pdfBody);
+    } catch {
+      // proceed to Reports regardless
     } finally {
       setIsPdfLoading(false);
     }
 
     setPdfModalVisible(false);
-    console.log(
-      '[RemidioQRScanner] handleGeneratePdf: navigating to Reports with bookingId =',
-      routeBookingId,
-    );
     // replace instead of navigate so pressing back from Reports goes to TestActivity, not back to the scanner
     navigation.replace('Reports', { bookingId: routeBookingId ?? undefined });
   };
 
   const handleClosePdfModal = () => {
-    console.log(
-      '[RemidioQRScanner] handleClosePdfModal: closing PDF modal without generating PDF',
-    );
     setPdfModalVisible(false);
     setScanned(false);
     setQrValue('');
@@ -1002,10 +936,6 @@ const RemidioQRScanner = ({ onBack }: RemidioQRScannerProps) => {
     try {
       const json = JSON.parse(value) as RemidioResult;
       if (json?.examID && json?.result) {
-        console.log(
-          '[RemidioQRScanner] parseQR: valid Remidio JSON scanned, examID =',
-          json.examID,
-        );
         setScanResult(json);
         setModalVisible(true);
         // API call intentionally deferred to Done button press

@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ms, vs } from 'react-native-size-matters';
@@ -237,6 +238,7 @@ const TestActivity: React.FC = () => {
   });
   const [rawPatients, setRawPatients] = useState<LabPatientRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [reportVisible, setReportVisible] = useState(false);
   const [reportUrl, setReportUrl] = useState<string>('');
   const [reportLoading, setReportLoading] = useState(false);
@@ -321,6 +323,18 @@ const TestActivity: React.FC = () => {
     return () => {
       cancelled = true;
     };
+  }, [activeTab]);
+
+  const onPullRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const list = await getLabPatients(activeTab);
+      setRawPatients(list);
+    } catch {
+      // silently retain existing data on refresh failure
+    } finally {
+      setRefreshing(false);
+    }
   }, [activeTab]);
 
   const missedSections = useMemo(() => {
@@ -499,17 +513,7 @@ const TestActivity: React.FC = () => {
       const packageDevices = (p.packages ?? []).flatMap(pkg => pkg.included_tests ?? []);
       const allDevices: RawDeviceItem[] = [...standaloneDevices, ...packageDevices];
 
-      console.log(
-        '[TestActivity] handlePerformTest — patient:', p.full_name,
-        '| standalone devices:', standaloneDevices.length,
-        '| package devices:', packageDevices.length,
-        '| total:', allDevices.length,
-        '| can_perform_test:', p.can_perform_test,
-        '| booking_id:', p.booking_id,
-      );
-
       if (allDevices.length > 1) {
-        console.log('[TestActivity] multiple devices — navigating to DeviceSelect screen');
         navigation.navigate('DeviceSelect', {
           patientName: (p.full_name ?? '').trim() || '—',
           bookingId: p.booking_id ?? null,
@@ -533,12 +537,6 @@ const TestActivity: React.FC = () => {
               bookingItemIds: p.booking_item_ids ?? null,
               testName: labPatientTestLabel(p),
             });
-
-      console.log(
-        '[TestActivity] navigating to device — name:', picked.deviceName,
-        '| id:', picked.deviceId,
-        '| bookingItemId:', picked.bookingItemId,
-      );
 
       if (
         applyLabIotPerformTestNavigation(
@@ -593,6 +591,14 @@ const TestActivity: React.FC = () => {
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onPullRefresh}
+                colors={[COLORS.PRIMARY]}
+                tintColor={COLORS.PRIMARY}
+              />
+            }
           >
             {loading ? (
               <View style={styles.loadingWrap}>

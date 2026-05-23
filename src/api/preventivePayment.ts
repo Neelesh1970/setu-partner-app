@@ -1,5 +1,5 @@
 import axios from "axios";
-import { getAuthToken, getRefreshToken } from "../Utils/storage";
+import { getRegisteredPatientAuthToken, getRegisteredPatientRefreshToken } from "../Utils/storage";
 import { BASE_URL } from "./apiConfig";
 
 const api = axios.create({
@@ -14,12 +14,15 @@ function maskToken(t: string | null | undefined): string {
 }
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
+  // Payment endpoints require the patient's token ("Use customer token").
+  // Use the patient-specific keys set by saveRegisteredPatientAuthData,
+  // NOT the primary auth_token which holds the lab worker's session.
   const [accessToken, refreshToken] = await Promise.all([
-    getAuthToken(),
-    getRefreshToken(),
+    getRegisteredPatientAuthToken(),
+    getRegisteredPatientRefreshToken(),
   ]);
-  console.log("[API][AUTH] access_token  :", maskToken(accessToken));
-  console.log("[API][AUTH] refresh_token :", maskToken(refreshToken));
+  console.log("[API][AUTH] patient access_token  :", maskToken(accessToken));
+  console.log("[API][AUTH] patient refresh_token :", maskToken(refreshToken));
   return {
     Authorization: `Bearer ${accessToken ?? ""}`,
     "x-refresh-token": refreshToken ?? "",

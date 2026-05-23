@@ -7,12 +7,15 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  StatusBar,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import ScreenHeader from '../../Components/ScreenHeader/ScreenHeader';
+import PreventiveHealthHeader from '../Home/PreventiveUser/PreventiveHealthHeader';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { COLORS } from '../../Constants/theme';
 import { RootStackParamList } from '../../navigation/types';
 import {
   verifyRegistrationOtp,
@@ -105,9 +108,11 @@ const OtpVerificationScreen: React.FC = () => {
       if (response.user?.id) {
         await saveUserID(String(response.user.id));
       }
-      if (authFlow === 'login' && response.user?.id) {
+      // Save lab_user_id for BOTH login and register flows so the
+      // "Register New User" flow always has the lab worker's own ID available.
+      if (response.user?.id) {
         await saveLabUserId(response.user.id);
-        console.log('[OtpVerificationScreen] lab_user_id saved:', response.user.id);
+        console.log('[OtpVerificationScreen] lab_user_id saved for authFlow=' + authFlow + ':', response.user.id);
       }
       dispatch(
         setSession({
@@ -170,13 +175,19 @@ const OtpVerificationScreen: React.FC = () => {
   const maskedMobile = `+91 XXXXXX${mobile.slice(-4)}`;
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScreenHeader title="OTP Verification" />
-
-      <View style={styles.container}>
+    <View style={styles.safe}>
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.PRIMARY} />
+      <View style={styles.headerShell}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <PreventiveHealthHeader title="OTP Verification" showBack={true} />
+        </SafeAreaView>
+      </View>
+      <SafeAreaView style={styles.flex} edges={['bottom']}>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.container}>
         {/* Info */}
         <View style={styles.infoSection}>
           <Text style={styles.infoTitle}>Enter OTP</Text>
@@ -225,40 +236,32 @@ const OtpVerificationScreen: React.FC = () => {
             <Text style={styles.buttonText}>Verify OTP</Text>
           )}
         </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 };
 
 export default OtpVerificationScreen;
+const RADIUS_LG = 20;
 
 const styles = StyleSheet.create({
-  flex: {
+  safe: {
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
-  headerBackground: {
-    backgroundColor: '#1A49AB',
-    paddingBottom: 25,
+  headerShell: {
+    backgroundColor: COLORS.PRIMARY,
+    borderBottomLeftRadius: RADIUS_LG,
+    borderBottomRightRadius: RADIUS_LG,
+    overflow: 'hidden',
   },
-  headerNav: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    marginTop: 10,
+  headerSafe: {
+    backgroundColor: COLORS.PRIMARY,
   },
-  backButton: {
-    marginRight: 15,
-  },
-  backArrow: {
-    fontSize: 28,
-    color: '#FFFFFF',
-    fontWeight: '300',
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#FFFFFF',
+  flex: {
+    flex: 1,
   },
   container: {
     flex: 1,

@@ -67,7 +67,7 @@ const DeviceOverview = ({ navigation, route }: any) => {
     const handleBack = () => {
       if (isNavigating) return true;
       isNavigating = true;
-      navigation.replace("ReportsHome");
+      navigation.replace("PreventiveHealth");
       return true;
     };
 

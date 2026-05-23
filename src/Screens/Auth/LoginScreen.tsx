@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   TextInput,
   Image,
   ActivityIndicator,
@@ -17,11 +16,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import PrimaryButton from '../../Components/Button/PrimaryButton';
+import PreventiveHealthHeader from '../Home/PreventiveUser/PreventiveHealthHeader';
 import { COLORS, FONT_SIZE, SPACING } from '../../Constants/theme';
 import { RootStackParamList } from '../../navigation/types';
 import axiosInstance from '../../api/axiosInstance';
 import { sendLoginOtp } from '../../Services/authService';
-import Ionicons from 'react-native-vector-icons/Ionicons';
 
 type LoginNavProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
@@ -39,7 +38,6 @@ type BackgroundImagesResponse = {
 };
 
 const PHONE_LENGTH = 10;
-const BACK_ICON_SIZE = 28;
 
 const LoginScreen: React.FC = () => {
   const navigation = useNavigation<LoginNavProp>();
@@ -104,84 +102,92 @@ const LoginScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.WHITE} />
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-      >
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
+    <View style={styles.safe}>
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.PRIMARY} />
+      <View style={styles.headerShell}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <PreventiveHealthHeader title="Login" showBack={true} />
+        </SafeAreaView>
+      </View>
+      <SafeAreaView style={styles.flex} edges={['bottom']}>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
-          <View style={styles.scrollInner}>
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              style={styles.iconBtn}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-            >
-              <Ionicons name="arrow-back" size={BACK_ICON_SIZE} color={COLORS.TEXT_PRIMARY} />
-            </TouchableOpacity>
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.scrollInner}>
+              <Text style={styles.title}>Welcome Back!</Text>
+              <Text style={styles.subtitle}>
+                Login to manage patients, perform tests, and track your earnings
+              </Text>
 
-            <Text style={styles.title}>Welcome Back!</Text>
-            <Text style={styles.subtitle}>
-              Login to manage patients, perform tests, and track your earnings
-            </Text>
-
-            <View style={styles.heroWrap}>
-              {heroUrl ? (
-                <Image source={{ uri: heroUrl }} style={styles.heroImage} resizeMode="contain" />
-              ) : heroLoading ? (
-                <ActivityIndicator size="large" color={COLORS.PRIMARY} />
-              ) : (
-                <View style={styles.heroPlaceholder} />
-              )}
-            </View>
-
-            <View style={styles.bottomSpacer} />
-
-            <View style={styles.formSection}>
-              <Text style={styles.label}>Phone Number</Text>
-              <View style={styles.phoneRow}>
-                <Text style={styles.prefix}>+91</Text>
-                <View style={styles.prefixDivider} />
-                <TextInput
-                  style={styles.phoneInput}
-                  value={phoneDigits}
-                  onChangeText={onChangePhone}
-                  placeholder="00000 - 00000"
-                  placeholderTextColor={COLORS.PLACEHOLDER}
-                  keyboardType="number-pad"
-                  maxLength={PHONE_LENGTH}
-                  textContentType="telephoneNumber"
-                  autoComplete="tel"
-                />
+              <View style={styles.heroWrap}>
+                {heroUrl ? (
+                  <Image source={{ uri: heroUrl }} style={styles.heroImage} resizeMode="contain" />
+                ) : heroLoading ? (
+                  <ActivityIndicator size="large" color={COLORS.PRIMARY} />
+                ) : (
+                  <View style={styles.heroPlaceholder} />
+                )}
               </View>
 
-              <PrimaryButton
-                title="Continue"
-                onPress={handleContinue}
-                loading={submitting}
-                disabled={phoneDigits.length !== PHONE_LENGTH}
-              />
+              <View style={styles.bottomSpacer} />
+
+              <View style={styles.formSection}>
+                <Text style={styles.label}>Phone Number</Text>
+                <View style={styles.phoneRow}>
+                  <Text style={styles.prefix}>+91</Text>
+                  <View style={styles.prefixDivider} />
+                  <TextInput
+                    style={styles.phoneInput}
+                    value={phoneDigits}
+                    onChangeText={onChangePhone}
+                    placeholder="00000 - 00000"
+                    placeholderTextColor={COLORS.PLACEHOLDER}
+                    keyboardType="number-pad"
+                    maxLength={PHONE_LENGTH}
+                    textContentType="telephoneNumber"
+                    autoComplete="tel"
+                  />
+                </View>
+
+                <PrimaryButton
+                  title="Continue"
+                  onPress={handleContinue}
+                  loading={submitting}
+                  disabled={phoneDigits.length !== PHONE_LENGTH}
+                />
+              </View>
             </View>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 };
 
 export default LoginScreen;
+const RADIUS_LG = 20;
+
 
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: COLORS.WHITE,
+  },
+  headerShell: {
+    backgroundColor: COLORS.PRIMARY,
+    borderBottomLeftRadius: RADIUS_LG,
+    borderBottomRightRadius: RADIUS_LG,
+    overflow: 'hidden',
+  },
+  headerSafe: {
+    backgroundColor: COLORS.PRIMARY,
   },
   flex: {
     flex: 1,
@@ -190,6 +196,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: SPACING.LG,
     paddingBottom: SPACING.LG,
+    paddingTop: SPACING.MD,
   },
   scrollInner: {
     flexGrow: 1,
@@ -203,11 +210,6 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'stretch',
     paddingBottom: SPACING.SM,
-  },
-  iconBtn: {
-    alignSelf: 'flex-start',
-    paddingVertical: SPACING.SM,
-    marginBottom: SPACING.MD,
   },
   title: {
     fontSize: FONT_SIZE.XXL,

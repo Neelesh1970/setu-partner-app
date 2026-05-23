@@ -115,7 +115,7 @@ export default function PreventiveBookingSummary({ navigation, route }: Props): 
   useFocusEffect(
     useCallback(() => {
       const onBackPress = (): boolean => {
-        navigation.navigate("PreventiveHealth");
+        navigation.goBack();
         return true;
       };
       const sub = BackHandler.addEventListener("hardwareBackPress", onBackPress);

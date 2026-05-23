@@ -14,6 +14,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../../navigation/types';
+import PreventiveHealthHeader from '../Home/PreventiveUser/PreventiveHealthHeader';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'RegisterName'>;
 type Route = RouteProp<RootStackParamList, 'RegisterName'>;
@@ -44,15 +45,21 @@ const RegisterName: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#EDEDED" />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#1C39BB" />
+      <View style={styles.headerShell}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <PreventiveHealthHeader
+            showBack
+            title=""
+            onBackPress={() => navigation.goBack()}
+          />
+        </SafeAreaView>
+      </View>
 
+      <SafeAreaView edges={['bottom']} style={styles.flex}>
       {/* Fixed top section — stays visible above the card at all times */}
       <View style={styles.topSection}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-          <Text style={styles.backArrow}>←</Text>
-        </TouchableOpacity>
-
         <View style={styles.progressRow}>
           <View style={[styles.progressDot, styles.progressDotActive]} />
           <View style={styles.progressLine} />
@@ -107,7 +114,8 @@ const RegisterName: React.FC = () => {
           </TouchableOpacity>
         </View>
       </ScrollView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 };
 
@@ -118,18 +126,21 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#EDEDED',
   },
+  headerShell: {
+    backgroundColor: '#1C39BB',
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    overflow: 'hidden',
+  },
+  headerSafe: {
+    backgroundColor: '#1C39BB',
+  },
   flex: {
     flex: 1,
   },
   topSection: {
     paddingBottom: 8,
-  },
-  backBtn: {
-    padding: 16,
-  },
-  backArrow: {
-    fontSize: 24,
-    color: '#222',
+    marginTop: 16,
   },
   progressRow: {
     flexDirection: 'row',

@@ -9,6 +9,8 @@ import {
     RefreshControl,
     Modal,
     ActivityIndicator,
+    Platform,
+    BackHandler,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Ionicons from "react-native-vector-icons/Ionicons";
@@ -92,6 +94,26 @@ export default function PreventiveCart({ navigation }: any) {
             setCartLoading(false);
         }
     }, [store]);
+
+    useEffect(() => {
+        let isNavigating = false;
+    
+        const handleBack = () => {
+          if (isNavigating) return true;
+          isNavigating = true;
+          navigation.replace("PreventiveHealth");
+          return true;
+        };
+    
+        let backSub: any;
+        if (Platform.OS === "android") {
+          backSub = BackHandler.addEventListener("hardwareBackPress", handleBack);
+        }
+    
+        return () => {
+          backSub?.remove();
+        };
+      }, [navigation]);
 
     useFocusEffect(
         useCallback(() => {
@@ -220,46 +242,55 @@ export default function PreventiveCart({ navigation }: any) {
 
     if (cartLoading) {
         return (
-            <SafeAreaView style={{ flex: 1 }}>
-                <PreventiveHealthHeader
-                    title="Cart"
-                    onBackPress={() => navigation.goBack()}
-                />
-                <View style={styles.empty}>
-                    <ActivityIndicator size="large" color={COLORS.cta} />
-                </View>
-            </SafeAreaView>
+            <>
+                <StatusBar barStyle="light-content" backgroundColor="#1C39BB" />
+                <SafeAreaView style={styles.headerSafe}>
+                    <PreventiveHealthHeader
+                        title="Cart"
+                        onBackPress={() => navigation.goBack()}
+                    />
+                </SafeAreaView>
+                <SafeAreaView style={styles.bodySafe}>
+                    <View style={styles.empty}>
+                        <ActivityIndicator size="large" color={COLORS.cta} />
+                    </View>
+                </SafeAreaView>
+            </>
         );
     }
 
     if (items.length === 0) {
         return (
-            <SafeAreaView style={{ flex: 1 }}>
-                <PreventiveHealthHeader
-                    title="Cart"
-                    onBackPress={() => navigation.goBack()}
-                />
+            <>
+                <StatusBar barStyle="light-content" backgroundColor="#1C39BB" />
+                <SafeAreaView style={styles.headerSafe}>
+                    <PreventiveHealthHeader
+                        title="Cart"
+                        onBackPress={() => navigation.goBack()}
+                    />
+                </SafeAreaView>
+                <SafeAreaView style={styles.bodySafe}>
+                    <View style={styles.empty}>
+                        {cartFetchError ? (
+                            <Text style={styles.fetchErrorText}>{cartFetchError}</Text>
+                        ) : (
+                            <Text>No items in cart</Text>
+                        )}
 
-                <View style={styles.empty}>
-                    {cartFetchError ? (
-                        <Text style={styles.fetchErrorText}>{cartFetchError}</Text>
-                    ) : (
-                        <Text>No items in cart</Text>
-                    )}
-
-                    <TouchableOpacity
-                        style={styles.addMoreBtn}
-                        onPress={() => navigation.navigate("HealthCheckupDevices")}
-                    >
-                        <Text style={{ color: "#fff" }}>Add More</Text>
-                    </TouchableOpacity>
-                </View>
-            </SafeAreaView>
+                        <TouchableOpacity
+                            style={styles.addMoreBtn}
+                            onPress={() => navigation.navigate("HealthCheckupDevices")}
+                        >
+                            <Text style={{ color: "#fff" }}>Add More</Text>
+                        </TouchableOpacity>
+                    </View>
+                </SafeAreaView>
+            </>
         );
     }
 
     return (
-        <View style={{ flex: 1 }}>
+        <>
             <StatusBar barStyle="light-content" backgroundColor="#1C39BB" />
 
             <SafeAreaView style={styles.headerSafe}>
@@ -269,43 +300,46 @@ export default function PreventiveCart({ navigation }: any) {
                 />
             </SafeAreaView>
 
-            <FlatList
-                data={listData}
-                keyExtractor={(item) => item.id}
-                renderItem={renderItem}
-                refreshControl={
-                    <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-                }
-                contentContainerStyle={styles.listContent}
-                ListFooterComponent={
-                    <View style={styles.addMoreWrapper}>
+            <SafeAreaView style={styles.bodySafe}>
+                <FlatList
+                    style={styles.list}
+                    data={listData}
+                    keyExtractor={(item) => item.id}
+                    renderItem={renderItem}
+                    refreshControl={
+                        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+                    }
+                    contentContainerStyle={styles.listContent}
+                    ListFooterComponent={
+                        <View style={styles.addMoreWrapper}>
+                            <TouchableOpacity
+                                style={styles.addMoreBtn}
+                                activeOpacity={0.9}
+                                onPress={() => navigation.navigate("PreventiveHealth")}
+                            >
+                                <Text style={styles.addMoreText}>
+                                    {addMoreLabel}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    }
+                />
+
+                <View style={styles.footer}>
+                    <View style={styles.footerRow}>
+                        <Text style={styles.footerPrice}>
+                            {formatRupee(total)}
+                        </Text>
+
                         <TouchableOpacity
-                            style={styles.addMoreBtn}
-                            activeOpacity={0.9}
-                            onPress={() => navigation.navigate("PreventiveHealth")}
+                            style={styles.continueBtn}
+                            onPress={() => navigation.navigate("PreventiveBookingDetail")}
                         >
-                            <Text style={styles.addMoreText}>
-                                {addMoreLabel}
-                            </Text>
+                            <Text style={styles.continueText}>Continue</Text>
                         </TouchableOpacity>
                     </View>
-                }
-            />
-
-            <View style={styles.footer}>
-                <View style={styles.footerRow}>
-                    <Text style={styles.footerPrice}>
-                        {formatRupee(total)}
-                    </Text>
-
-                    <TouchableOpacity
-                        style={styles.continueBtn}
-                        onPress={() => navigation.navigate("PreventiveBookingDetail")}
-                    >
-                        <Text style={styles.continueText}>Continue</Text>
-                    </TouchableOpacity>
                 </View>
-            </View>
+            </SafeAreaView>
 
             <Modal visible={showRemovePopup} transparent animationType="fade">
                 <View style={styles.modalOverlay}>
@@ -347,7 +381,7 @@ export default function PreventiveCart({ navigation }: any) {
                     </View>
                 </View>
             </Modal>
-        </View>
+        </>
     );
 }
 
@@ -357,6 +391,13 @@ const styles = StyleSheet.create({
         borderBottomLeftRadius: ms(18),
         borderBottomRightRadius: ms(18),
         overflow: "hidden",
+    },
+    bodySafe: {
+        flex: 1,
+        backgroundColor: COLORS.bg,
+    },
+    list: {
+        flex: 1,
     },
     footer: {
         position: "absolute",
