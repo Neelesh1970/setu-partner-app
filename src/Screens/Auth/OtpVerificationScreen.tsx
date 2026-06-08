@@ -23,6 +23,8 @@ import {
   verifyLoginOtp,
   resendLoginOtp,
   getIdentityVerificationStatus,
+  isApprovedIdentityVerification,
+  hasSubmittedIdentityVerification,
 } from '../../Services/authService';
 import { saveAuthTokens, saveUser, saveLabUserId, saveUserID } from '../../Utils/storage';
 import { useAppDispatch } from '../../store/hooks';
@@ -33,14 +35,6 @@ type OtpNavProp = NativeStackNavigationProp<RootStackParamList, 'OtpVerification
 type OtpRouteProp = RouteProp<RootStackParamList, 'OtpVerification'>;
 
 const OTP_LENGTH = 6;
-const isApprovedVerification = (payload: any): boolean => {
-  const status = String(payload?.verification_status ?? '').toUpperCase();
-  return status === 'APPROVED' || payload?.is_approved === true;
-};
-
-const hasPendingVerification = (payload: any): boolean => {
-  return !!payload && !isApprovedVerification(payload);
-};
 
 const OtpVerificationScreen: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -88,6 +82,9 @@ const OtpVerificationScreen: React.FC = () => {
         return;
       }
 
+      if (authFlow === 'login') {
+        console.log('[OtpVerificationScreen][Login] verifying OTP for mobile:', mobile);
+      }
       const response =
         authFlow === 'login'
           ? await verifyLoginOtp({ mobile, otp: otpCode })
@@ -123,19 +120,40 @@ const OtpVerificationScreen: React.FC = () => {
       );
 
       if (authFlow === 'login') {
-        // Login flow: IdentityVerification is NOT part of login.
-        // Route based on verification status; fall back to Home on any error.
+        // Route by KYC state: approved → Home; submitted → pending; else → upload docs.
+        console.log('[OtpVerificationScreen][Login] OTP verified — checking identity verification status');
         try {
           const verification = await getIdentityVerificationStatus();
-          if (isApprovedVerification(verification?.data)) {
+          const record = verification?.data;
+          console.log('[OtpVerificationScreen][Login] GET /identity-verification — full response:', JSON.stringify(verification, null, 2));
+          console.log('[OtpVerificationScreen][Login] KYC record snapshot:', {
+            hasRecord: Boolean(record),
+            verification_status: record?.verification_status ?? null,
+            is_approved: record?.is_approved ?? null,
+            submitted: record?.submitted ?? null,
+            document_url: record?.document_url ?? null,
+            hasDocumentUrl: Boolean(record?.document_url?.trim()),
+            technician_certificate_url: record?.technician_certificate_url ?? null,
+          });
+          const approved = isApprovedIdentityVerification(record);
+          const submitted = hasSubmittedIdentityVerification(record);
+          console.log('[OtpVerificationScreen][Login] routing flags:', { approved, submitted });
+          if (approved) {
+            console.log('[OtpVerificationScreen][Login] → navigate: Home (APPROVED)');
             navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
-          } else if (hasPendingVerification(verification?.data)) {
+          } else if (submitted) {
+            console.log('[OtpVerificationScreen][Login] → navigate: VerificationPending (docs submitted, awaiting approval)');
             navigation.reset({ index: 0, routes: [{ name: 'VerificationPending' }] });
+          } else if (record) {
+            console.log('[OtpVerificationScreen][Login] → navigate: IdentityVerification (KYC not submitted yet)');
+            navigation.reset({ index: 0, routes: [{ name: 'IdentityVerification' }] });
           } else {
+            console.log('[OtpVerificationScreen][Login] → navigate: Home (no KYC record)');
             navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
           }
         } catch (statusError) {
-          console.log('[OtpVerificationScreen] verification-status check error:', statusError);
+          console.log('[OtpVerificationScreen][Login] verification-status check error:', statusError);
+          console.log('[OtpVerificationScreen][Login] → navigate: Home (status check failed fallback)');
           navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
         }
         return;

@@ -130,6 +130,9 @@ export function applyLabIotPerformTestNavigation(
     navigate('BloodPressure', {
       deviceId: deviceId ?? null,
       deviceName: deviceName ?? null,
+      bookingItemId: bookingItemId ?? null,
+      bookingId: bookingId ?? null,
+      isMultiDevice: isMultiDevice ?? false,
     });
     return true;
   }

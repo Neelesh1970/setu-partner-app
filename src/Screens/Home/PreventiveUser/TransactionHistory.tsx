@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   StatusBar,
   RefreshControl,
+  TouchableOpacity,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -25,6 +26,7 @@ const PRIMARY = '#1C39BB';
 const LABEL_GRAY = '#6B7280';
 const BORDER = '#E5E7EB';
 const DEBIT_RED = '#B91C1C';
+const TRANSACTIONS_PER_PAGE = 10;
 
 type TxRow = {
   title: string;
@@ -145,6 +147,33 @@ function buildSections(txData: LabWalletTransactionsData | null): TxSection[] {
   return sections;
 }
 
+function resolveTotalPages(
+  txData: LabWalletTransactionsData | null,
+  limit: number,
+): number {
+  const pag = txData?.pagination;
+  if (typeof pag?.total_pages === 'number' && pag.total_pages > 0) {
+    return pag.total_pages;
+  }
+  if (typeof pag?.total === 'number' && pag.total > 0) {
+    return Math.max(1, Math.ceil(pag.total / limit));
+  }
+  return 1;
+}
+
+function getVisiblePageNumbers(currentPage: number, totalPages: number): number[] {
+  if (totalPages <= 4) {
+    return Array.from({ length: totalPages }, (_, i) => i + 1);
+  }
+
+  let start = Math.max(1, currentPage - 1);
+  if (start + 3 > totalPages) {
+    start = totalPages - 3;
+  }
+
+  return [start, start + 1, start + 2, start + 3];
+}
+
 const TransactionHistory: React.FC = () => {
   const navigation = useNavigation<TransactionHistoryNav>();
   const insets = useSafeAreaInsets();
@@ -154,32 +183,52 @@ const TransactionHistory: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sections, setSections] = useState<TxSection[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
-  const loadTransactions = useCallback(async (opts?: { isRefresh?: boolean }) => {
-    if (opts?.isRefresh) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
-    setError(null);
-    try {
-      const txData = await getLabWalletTransactions(1, 20);
-      setSections(buildSections(txData));
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to load transactions.');
-      setSections([]);
-    } finally {
+  const loadTransactions = useCallback(
+    async (page: number, opts?: { isRefresh?: boolean }) => {
       if (opts?.isRefresh) {
-        setRefreshing(false);
+        setRefreshing(true);
       } else {
-        setLoading(false);
+        setLoading(true);
       }
-    }
-  }, []);
+      setError(null);
+      try {
+        const txData = await getLabWalletTransactions(page, TRANSACTIONS_PER_PAGE);
+        setSections(buildSections(txData));
+        setCurrentPage(page);
+        setTotalPages(resolveTotalPages(txData, TRANSACTIONS_PER_PAGE));
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'Failed to load transactions.');
+        setSections([]);
+        setTotalPages(1);
+      } finally {
+        if (opts?.isRefresh) {
+          setRefreshing(false);
+        } else {
+          setLoading(false);
+        }
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
-    loadTransactions();
+    loadTransactions(1);
   }, [loadTransactions]);
+
+  const goToPage = useCallback(
+    (page: number) => {
+      if (page < 1 || page > totalPages || page === currentPage || loading) {
+        return;
+      }
+      void loadTransactions(page);
+    },
+    [currentPage, loadTransactions, loading, totalPages],
+  );
+
+  const visiblePages = getVisiblePageNumbers(currentPage, totalPages);
 
   return (
     <View style={styles.root}>
@@ -212,7 +261,7 @@ const TransactionHistory: React.FC = () => {
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
-              onRefresh={() => loadTransactions({ isRefresh: true })}
+              onRefresh={() => loadTransactions(currentPage, { isRefresh: true })}
               colors={[PRIMARY]}
               tintColor={PRIMARY}
             />
@@ -253,6 +302,79 @@ const TransactionHistory: React.FC = () => {
               </View>
             ))
           )}
+
+          {totalPages > 1 ? (
+            <View style={styles.paginationRow}>
+              <TouchableOpacity
+                style={[
+                  styles.paginationNavBtn,
+                  currentPage <= 1 && styles.paginationNavBtnDisabled,
+                ]}
+                onPress={() => goToPage(currentPage - 1)}
+                disabled={currentPage <= 1 || loading}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Previous page"
+              >
+                <Text
+                  style={[
+                    styles.paginationNavText,
+                    currentPage <= 1 && styles.paginationNavTextDisabled,
+                  ]}
+                >
+                  Prev
+                </Text>
+              </TouchableOpacity>
+
+              {visiblePages.map(page => {
+                const isActive = page === currentPage;
+                return (
+                  <TouchableOpacity
+                    key={page}
+                    style={[
+                      styles.paginationPageBtn,
+                      isActive && styles.paginationPageBtnActive,
+                    ]}
+                    onPress={() => goToPage(page)}
+                    disabled={isActive || loading}
+                    activeOpacity={0.85}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Page ${page}`}
+                  >
+                    <Text
+                      style={[
+                        styles.paginationPageText,
+                        isActive && styles.paginationPageTextActive,
+                      ]}
+                    >
+                      {page}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+
+              <TouchableOpacity
+                style={[
+                  styles.paginationNavBtn,
+                  currentPage >= totalPages && styles.paginationNavBtnDisabled,
+                ]}
+                onPress={() => goToPage(currentPage + 1)}
+                disabled={currentPage >= totalPages || loading}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Next page"
+              >
+                <Text
+                  style={[
+                    styles.paginationNavText,
+                    currentPage >= totalPages && styles.paginationNavTextDisabled,
+                  ]}
+                >
+                  Next
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </ScrollView>
       )}
     </View>
@@ -367,6 +489,57 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: s(15),
     color: LABEL_GRAY,
+  },
+  paginationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: ms(8),
+    paddingTop: vs(16),
+    paddingBottom: vs(8),
+    flexWrap: 'wrap',
+  },
+  paginationNavBtn: {
+    paddingVertical: vs(8),
+    paddingHorizontal: ms(12),
+    borderRadius: ms(8),
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: '#FFFFFF',
+  },
+  paginationNavBtnDisabled: {
+    opacity: 0.45,
+  },
+  paginationNavText: {
+    fontSize: s(13),
+    fontWeight: '600',
+    color: PRIMARY,
+  },
+  paginationNavTextDisabled: {
+    color: LABEL_GRAY,
+  },
+  paginationPageBtn: {
+    minWidth: ms(36),
+    height: ms(36),
+    borderRadius: ms(8),
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: ms(8),
+  },
+  paginationPageBtnActive: {
+    backgroundColor: PRIMARY,
+    borderColor: PRIMARY,
+  },
+  paginationPageText: {
+    fontSize: s(14),
+    fontWeight: '600',
+    color: PRIMARY,
+  },
+  paginationPageTextActive: {
+    color: '#FFFFFF',
   },
 });
 

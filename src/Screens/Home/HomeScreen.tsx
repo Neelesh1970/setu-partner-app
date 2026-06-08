@@ -762,7 +762,6 @@ const HomeScreen: React.FC = () => {
             onAvatarPress={() => navigation.navigate('Profile')}
             rightSlot={
               <View style={styles.headerActions}>
-                {/* DEV: quick nav to PreventiveHealth for flow testing */}
                 <TouchableOpacity
                   onPress={goReports}
                   style={styles.headerAction}

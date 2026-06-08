@@ -52,24 +52,14 @@ import { COLORS } from '../Constants/theme';
 import { getAuthToken, getUser, getUserID } from '../Utils/storage';
 import { navigationRef } from './navigationRef';
 import type { VerifiedUser } from '../Services/authService';
-import { getIdentityVerificationStatus } from '../Services/authService';
+import {
+  getIdentityVerificationStatus,
+  isApprovedIdentityVerification,
+  hasSubmittedIdentityVerification,
+} from '../Services/authService';
 import SplashScreen from '../Screens/Auth/SplashScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
-
-const isApprovedVerification = (payload: any): boolean => {
-  const status = String(payload?.verification_status ?? '').toUpperCase();
-  return status === 'APPROVED' || payload?.is_approved === true;
-};
-
-/**
- * Returns true when the worker has submitted KYC but it's not yet approved.
- * A record existing in the response means they have submitted — status value
- * is irrelevant as long as it is not APPROVED.
- */
-const hasPendingVerification = (payload: any): boolean => {
-  return !!payload && !isApprovedVerification(payload);
-};
 
 const AppNavigator: React.FC = () => {
   const dispatch = useDispatch();
@@ -92,13 +82,16 @@ const AppNavigator: React.FC = () => {
           );
           try {
             const verification = await getIdentityVerificationStatus();
-            if (isApprovedVerification(verification?.data)) {
+            const record = verification?.data;
+            if (isApprovedIdentityVerification(record)) {
               setInitialRouteName('Home');
-            } else if (hasPendingVerification(verification?.data)) {
+            } else if (hasSubmittedIdentityVerification(record)) {
               setInitialRouteName('VerificationPending');
+            } else if (record) {
+              setInitialRouteName('IdentityVerification');
             } else {
               // No verification record: user is already authenticated (token exists),
-              // so go to Home. IdentityVerification is only for the register flow.
+              // so go to Home.
               setInitialRouteName('Home');
             }
           } catch {

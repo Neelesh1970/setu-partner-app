@@ -113,6 +113,9 @@ export type RootStackParamList = {
     | {
         deviceId?: string | null;
         deviceName?: string | null;
+        bookingItemId?: string | null;
+        bookingId?: string | null;
+        isMultiDevice?: boolean;
       }
     | undefined;
   DeviceSelect: {

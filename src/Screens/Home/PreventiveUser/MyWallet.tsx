@@ -184,7 +184,7 @@ const MyWallet: React.FC = () => {
       const [profileRes, summaryData, txData, walletImgUrl] = await Promise.all([
         axiosInstance.get<LabProfileResponse>('lab/profile'),
         getLabWalletSummary(),
-        getLabWalletTransactions(1, 20),
+        getLabWalletTransactions(1, 10),
         fetchBackgroundImageUrl(WALLET_BACKGROUND_IMAGE_API_ID).catch(() => null),
       ]);
 
@@ -200,7 +200,7 @@ const MyWallet: React.FC = () => {
           rows.push(row);
         }
       }
-      setTransactions(rows);
+      setTransactions(rows.slice(0, 10));
     } catch {
       setProfile(null);
       setSummary(null);

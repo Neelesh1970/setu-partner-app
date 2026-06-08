@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   PermissionsAndroid,
   Platform,
   ScrollView,
@@ -11,9 +12,14 @@ import {
   View,
 } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useRoute, type RouteProp } from '@react-navigation/native';
 import { BleManager, Device, Subscription } from 'react-native-ble-plx';
 import { Buffer } from 'buffer';
 import type { RootStackParamList } from '../../navigation/types';
+import { postBloodPressureResult } from '../../api/iotDeviceResults';
+import axiosInstance from '../../api/axiosInstance';
+import { BACKEND_NIBP_DEVICE_ID } from '../../Utils/labIotPerformTest';
+import { setPendingCompletedBookingItemId } from '../../Utils/multiDeviceSession';
 
 const globalBuffer = globalThis as typeof globalThis & {
   Buffer?: typeof Buffer;
@@ -100,9 +106,83 @@ const PER_USER_RECORD_COUNT = [20, 20];
 const RECORD_BYTE_SIZE = 14;
 const TRANSMISSION_BLOCK_SIZE = 0x38;
 
+type BloodPressureRoute = RouteProp<RootStackParamList, 'BloodPressure'>;
+
+type BloodPressureRouteParams = RootStackParamList['BloodPressure'] & {
+  bookingItemId?: string | null;
+  bookingId?: string | null;
+  deviceId?: string | null;
+  isMultiDevice?: boolean;
+};
+
+type BpResultSnapshot = {
+  sys: number;
+  dia: number;
+  pulse: number;
+};
+
+function serializeBleDevice(device: Device): Record<string, unknown> {
+  return {
+    id: device.id,
+    name: device.name ?? null,
+    localName: device.localName ?? null,
+    rssi: device.rssi ?? null,
+    mtu: device.mtu ?? null,
+    serviceUUIDs: device.serviceUUIDs ?? null,
+    solicitedServiceUUIDs: device.solicitedServiceUUIDs ?? null,
+    overflowServiceUUIDs: device.overflowServiceUUIDs ?? null,
+    manufacturerData: device.manufacturerData ?? null,
+    serviceData: device.serviceData ?? null,
+    txPowerLevel: device.txPowerLevel ?? null,
+    isConnectable: device.isConnectable ?? null,
+  };
+}
+
+function logNavigationParams(params: BloodPressureRouteParams | undefined): void {
+  const p = params ?? {};
+  console.log(
+    '[BloodPressure] navigation params:',
+    JSON.stringify(
+      {
+        booking_id: p.bookingId ?? null,
+        booking_item_id: p.bookingItemId ?? null,
+        deviceId: p.deviceId ?? null,
+        deviceName: p.deviceName ?? null,
+        allRouteParams: p,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
 export default function BloodPressure({
   navigation,
 }: BloodPressureScreenProps) {
+  const route = useRoute<BloodPressureRoute>();
+  const routeParams =
+    (route.params as BloodPressureRouteParams | undefined) ?? {};
+  const bookingItemId = routeParams.bookingItemId ?? '';
+  const bookingId = routeParams.bookingId ?? '';
+  const routeDeviceId = routeParams.deviceId ?? null;
+  const routeIsMultiDevice = routeParams.isMultiDevice ?? false;
+
+  const logBpResultPayload = (systolic: number, diastolic: number) => {
+    console.log(
+      '[BloodPressure] result payload:',
+      JSON.stringify(
+        {
+          systolic,
+          diastolic,
+          booking_id: bookingId || null,
+          ph_booking_item_id: bookingItemId || null,
+        },
+        null,
+        4,
+      ),
+    );
+  };
+
   const managerRef = useRef<BleManager | null>(null);
   if (!managerRef.current) {
     managerRef.current = new BleManager();
@@ -138,6 +218,112 @@ export default function BloodPressure({
     dia: null,
     pulse: null,
   });
+
+  const [resultModalVisible, setResultModalVisible] = useState(false);
+  const [pdfModalVisible, setPdfModalVisible] = useState(false);
+  const [savedResult, setSavedResult] = useState<BpResultSnapshot | null>(null);
+  const [isDoneLoading, setIsDoneLoading] = useState(false);
+  const [isPdfLoading, setIsPdfLoading] = useState(false);
+
+  const hasValidBpReading =
+    bpValue.sys !== null &&
+    bpValue.dia !== null &&
+    bpValue.pulse !== null &&
+    isValidBP(bpValue.sys, bpValue.dia, bpValue.pulse);
+
+  const openResultModal = useCallback(() => {
+    if (
+      bpValue.sys === null ||
+      bpValue.dia === null ||
+      bpValue.pulse === null
+    ) {
+      return;
+    }
+    setSavedResult({
+      sys: bpValue.sys,
+      dia: bpValue.dia,
+      pulse: bpValue.pulse,
+    });
+    setResultModalVisible(true);
+  }, [bpValue.sys, bpValue.dia, bpValue.pulse]);
+
+  const handleResultDone = useCallback(async (): Promise<void> => {
+    if (!savedResult) {
+      setResultModalVisible(false);
+      return;
+    }
+
+    const deviceId = routeDeviceId ?? BACKEND_NIBP_DEVICE_ID;
+    if (!deviceId || !bookingItemId) {
+      setResultModalVisible(false);
+      return;
+    }
+
+    setIsDoneLoading(true);
+    try {
+      await postBloodPressureResult({
+        deviceId,
+        bookingItemId,
+        systolic: savedResult.sys,
+        diastolic: savedResult.dia,
+        pulseRate: savedResult.pulse,
+      });
+    } catch {
+      // proceed like Remidio flow
+    } finally {
+      setIsDoneLoading(false);
+    }
+
+    setResultModalVisible(false);
+
+    if (routeIsMultiDevice && bookingItemId) {
+      setPendingCompletedBookingItemId(bookingItemId);
+      navigation.goBack();
+      return;
+    }
+
+    setPdfModalVisible(true);
+  }, [
+    savedResult,
+    routeDeviceId,
+    bookingItemId,
+    routeIsMultiDevice,
+    navigation,
+  ]);
+
+  const handleGeneratePdf = useCallback(async (): Promise<void> => {
+    if (!bookingId) {
+      setPdfModalVisible(false);
+      navigation.replace('Reports');
+      return;
+    }
+
+    setIsPdfLoading(true);
+    try {
+      await axiosInstance.post('reports/payload/pdf', { bookingId });
+    } catch {
+      // proceed to Reports regardless
+    } finally {
+      setIsPdfLoading(false);
+    }
+
+    setPdfModalVisible(false);
+    navigation.replace('Reports', { bookingId: bookingId ?? undefined });
+  }, [bookingId, navigation]);
+
+  const handleCloseResultModal = useCallback(() => {
+    setResultModalVisible(false);
+    setSavedResult(null);
+  }, []);
+
+  const handleClosePdfModal = useCallback(() => {
+    setPdfModalVisible(false);
+    setSavedResult(null);
+  }, []);
+
+  useEffect(() => {
+    logNavigationParams(route.params as BloodPressureRouteParams | undefined);
+  }, [route.params]);
 
   useEffect(() => {
     let mounted = true;
@@ -235,6 +421,8 @@ export default function BloodPressure({
 
       if (!isOmron) return;
 
+      const bleSnapshot = serializeBleDevice(device);
+
       setDevices(prev => {
         const exists = prev.find(x => x.id === device.id);
 
@@ -245,6 +433,11 @@ export default function BloodPressure({
               : x,
           );
         }
+
+        console.log(
+          '[BloodPressure] BLE device discovered:',
+          JSON.stringify(bleSnapshot, null, 2),
+        );
 
         return [
           ...prev,
@@ -261,6 +454,28 @@ export default function BloodPressure({
     scanTimerRef.current = setTimeout(() => {
       stopScan();
       setStatus('Scan finished. Select device to connect.');
+      setDevices(prev => {
+        console.log(
+          '[BloodPressure] scan finished — total devices:',
+          prev.length,
+        );
+        prev.forEach((item, index) => {
+          console.log(
+            `[BloodPressure] scanned device [${index}]:`,
+            JSON.stringify(
+              {
+                id: item.id,
+                name: item.name,
+                rssi: item.rssi ?? null,
+                ble: serializeBleDevice(item.deviceRef),
+              },
+              null,
+              2,
+            ),
+          );
+        });
+        return prev;
+      });
     }, 12000);
   }
 
@@ -314,6 +529,24 @@ export default function BloodPressure({
       setStatus('Invalid device');
       return;
     }
+
+    console.log(
+      '[BloodPressure] connect selected device:',
+      JSON.stringify(
+        {
+          booking_id: bookingId || null,
+          booking_item_id: bookingItemId || null,
+          selected: {
+            id: item.id,
+            name: item.name,
+            rssi: item.rssi ?? null,
+          },
+          ble: serializeBleDevice(item.deviceRef),
+        },
+        null,
+        2,
+      ),
+    );
 
     await connectDeviceById(item.id, item.name);
   }
@@ -442,6 +675,7 @@ export default function BloodPressure({
             dia: latest.dia,
             pulse: latest.bpm ?? latest.pulse ?? null,
           });
+          logBpResultPayload(latest.sys, latest.dia);
 
           setStatus(
             `History loaded: ${sortedRecords.length}. Latest: ${latest.sys}/${
@@ -803,6 +1037,7 @@ export default function BloodPressure({
       dia: liveRecord.dia,
       pulse: liveRecord.bpm ?? null,
     });
+    logBpResultPayload(liveRecord.sys, liveRecord.dia);
 
     setRecords(prev => {
       const exists = prev.some(r => r.rawHex === liveRecord.rawHex);
@@ -1580,9 +1815,211 @@ export default function BloodPressure({
           <Text style={styles.scanButtonText}>Disconnect</Text>
         </TouchableOpacity>
       ) : null}
+
+      {hasValidBpReading ? (
+        <TouchableOpacity
+          style={styles.doneButton}
+          onPress={openResultModal}
+        >
+          <Text style={styles.scanButtonText}>Done</Text>
+        </TouchableOpacity>
+      ) : null}
+
+      {savedResult ? (
+        <BpResultModal
+          visible={resultModalVisible}
+          result={savedResult}
+          onClose={handleCloseResultModal}
+          onDone={() => {
+            void handleResultDone();
+          }}
+          isDoneLoading={isDoneLoading}
+        />
+      ) : null}
+
+      <GeneratePdfModal
+        visible={pdfModalVisible}
+        onGeneratePdf={() => {
+          void handleGeneratePdf();
+        }}
+        onClose={handleClosePdfModal}
+        isPdfLoading={isPdfLoading}
+      />
     </View>
   );
 }
+
+const BLUE = '#2563EB';
+const BLUE_LIGHT = '#EFF6FF';
+const GREEN = '#059669';
+const GREEN_LIGHT = '#ECFDF5';
+const AMBER_LIGHT = '#FFFBEB';
+
+const BpMetricRow = ({ label, value }: { label: string; value: string }) => (
+  <View style={bpModalStyles.metricRow}>
+    <Text style={bpModalStyles.metricLabel}>{label}</Text>
+    <Text style={bpModalStyles.metricValue}>{value}</Text>
+  </View>
+);
+
+type BpResultModalProps = {
+  visible: boolean;
+  result: BpResultSnapshot;
+  onClose: () => void;
+  onDone: () => void;
+  isDoneLoading: boolean;
+};
+
+const BpResultModal = ({
+  visible,
+  result,
+  onClose,
+  onDone,
+  isDoneLoading,
+}: BpResultModalProps) => (
+  <Modal
+    visible={visible}
+    transparent
+    animationType="slide"
+    onRequestClose={onClose}
+  >
+    <View style={bpModalStyles.modalOverlay}>
+      <View style={bpModalStyles.modalContainer}>
+        <View style={bpModalStyles.modalHeader}>
+          <View style={bpModalStyles.modalTitleWrap}>
+            <Text style={bpModalStyles.modalTitle}>Blood Pressure Results</Text>
+            <View style={bpModalStyles.readingBadge}>
+              <Text style={bpModalStyles.readingBadgeLabel}>Reading</Text>
+              <Text style={bpModalStyles.readingBadgeValue}>
+                {result.sys}/{result.dia} mmHg
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity style={bpModalStyles.closeBtn} onPress={onClose}>
+            <Text style={bpModalStyles.closeBtnText}>✕</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={bpModalStyles.cardsRow}>
+          <View style={[bpModalStyles.metricCard, bpModalStyles.sysCard]}>
+            <View style={bpModalStyles.metricCardHeader}>
+              <Text style={bpModalStyles.metricCardIcon}>🩺</Text>
+              <Text style={bpModalStyles.metricCardTitle}>Systolic</Text>
+            </View>
+            <View style={bpModalStyles.divider} />
+            <BpMetricRow label="SYS" value={`${result.sys} mmHg`} />
+          </View>
+
+          <View style={[bpModalStyles.metricCard, bpModalStyles.diaCard]}>
+            <View style={bpModalStyles.metricCardHeader}>
+              <Text style={bpModalStyles.metricCardIcon}>🩺</Text>
+              <Text style={bpModalStyles.metricCardTitle}>Diastolic</Text>
+            </View>
+            <View style={bpModalStyles.divider} />
+            <BpMetricRow label="DIA" value={`${result.dia} mmHg`} />
+          </View>
+        </View>
+
+        <View style={[bpModalStyles.metricCard, bpModalStyles.pulseCard]}>
+          <View style={bpModalStyles.metricCardHeader}>
+            <Text style={bpModalStyles.metricCardIcon}>💓</Text>
+            <Text style={bpModalStyles.metricCardTitle}>Pulse Rate</Text>
+          </View>
+          <View style={bpModalStyles.divider} />
+          <BpMetricRow label="Pulse" value={`${result.pulse} bpm`} />
+        </View>
+
+        <View style={bpModalStyles.legend}>
+          <Text style={bpModalStyles.legendText}>
+            SYS: Systolic pressure &nbsp;·&nbsp; DIA: Diastolic pressure
+            &nbsp;·&nbsp; Pulse: Heart rate
+          </Text>
+        </View>
+
+        <View style={bpModalStyles.actionsRow}>
+          <TouchableOpacity
+            style={[bpModalStyles.actionBtn, bpModalStyles.scanAgainOutline]}
+            onPress={onClose}
+          >
+            <Text style={bpModalStyles.scanAgainOutlineText}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              bpModalStyles.actionBtn,
+              bpModalStyles.doneBtn,
+              isDoneLoading && bpModalStyles.disabledBtn,
+            ]}
+            onPress={onDone}
+            disabled={isDoneLoading}
+          >
+            {isDoneLoading ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={bpModalStyles.doneBtnText}>Done</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  </Modal>
+);
+
+type GeneratePdfModalProps = {
+  visible: boolean;
+  onGeneratePdf: () => void;
+  onClose: () => void;
+  isPdfLoading: boolean;
+};
+
+const GeneratePdfModal = ({
+  visible,
+  onGeneratePdf,
+  onClose,
+  isPdfLoading,
+}: GeneratePdfModalProps) => (
+  <Modal
+    visible={visible}
+    transparent
+    animationType="slide"
+    onRequestClose={onClose}
+  >
+    <View style={bpModalStyles.modalOverlay}>
+      <View style={bpModalStyles.modalContainer}>
+        <View style={bpModalStyles.modalHeader}>
+          <View style={bpModalStyles.modalTitleWrap}>
+            <Text style={bpModalStyles.modalTitle}>Results Saved</Text>
+            <Text style={bpModalStyles.pdfModalSubtitle}>
+              Blood pressure data has been recorded. Generate a PDF report to
+              view detailed results.
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={bpModalStyles.closeBtn}
+            onPress={onClose}
+            disabled={isPdfLoading}
+          >
+            <Text style={bpModalStyles.closeBtnText}>✕</Text>
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity
+          style={[
+            bpModalStyles.generatePdfBtn,
+            isPdfLoading && bpModalStyles.disabledBtn,
+          ]}
+          onPress={onGeneratePdf}
+          disabled={isPdfLoading}
+        >
+          {isPdfLoading ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={bpModalStyles.generatePdfBtnText}>Generate PDF</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+    </View>
+  </Modal>
+);
 
 const styles = StyleSheet.create({
   deviceWrap: {
@@ -1759,5 +2196,202 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '800',
     fontSize: 15,
+  },
+  doneButton: {
+    backgroundColor: '#2563EB',
+    padding: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+});
+
+const bpModalStyles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.55)',
+    justifyContent: 'flex-end',
+  },
+  modalContainer: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+    paddingTop: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 20,
+  },
+  modalTitleWrap: {
+    flex: 1,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 6,
+  },
+  pdfModalSubtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  readingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    alignSelf: 'flex-start',
+    gap: 6,
+  },
+  readingBadgeLabel: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  readingBadgeValue: {
+    fontSize: 12,
+    color: '#0F172A',
+    fontWeight: '700',
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  closeBtnText: {
+    fontSize: 14,
+    color: '#475569',
+    fontWeight: '700',
+  },
+  cardsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
+  metricCard: {
+    borderRadius: 16,
+    padding: 14,
+  },
+  sysCard: {
+    flex: 1,
+    backgroundColor: BLUE_LIGHT,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  diaCard: {
+    flex: 1,
+    backgroundColor: GREEN_LIGHT,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  pulseCard: {
+    backgroundColor: AMBER_LIGHT,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    marginBottom: 16,
+  },
+  metricCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 6,
+  },
+  metricCardIcon: {
+    fontSize: 18,
+  },
+  metricCardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(0,0,0,0.08)',
+    marginBottom: 10,
+  },
+  metricRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 5,
+  },
+  metricLabel: {
+    fontSize: 12,
+    color: '#475569',
+    fontWeight: '500',
+    flex: 1,
+  },
+  metricValue: {
+    fontSize: 14,
+    color: '#0F172A',
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  legend: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 20,
+  },
+  legendText: {
+    fontSize: 11,
+    color: '#94A3B8',
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  actionBtn: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  scanAgainOutline: {
+    borderWidth: 1.5,
+    borderColor: BLUE,
+    backgroundColor: 'transparent',
+  },
+  scanAgainOutlineText: {
+    color: BLUE,
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  doneBtn: {
+    backgroundColor: BLUE,
+  },
+  doneBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  disabledBtn: {
+    opacity: 0.6,
+  },
+  generatePdfBtn: {
+    backgroundColor: BLUE,
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    width: '100%',
+  },
+  generatePdfBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 16,
   },
 });

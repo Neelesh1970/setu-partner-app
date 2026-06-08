@@ -1,4 +1,4 @@
-import React, {useEffect, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -7,14 +7,18 @@ import {
   Text,
   PermissionsAndroid,
   Platform,
+  BackHandler,
   TouchableOpacity,
   StyleSheet,
   TextInput,
   ScrollView,
+  PanResponder,
   useWindowDimensions,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {ms, s, vs} from 'react-native-size-matters';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import {BleManager, Device, Subscription} from 'react-native-ble-plx';
 import {Buffer} from 'buffer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -25,6 +29,10 @@ import {postBmiResult} from '../../api/iotDeviceResults';
 import axiosInstance from '../../api/axiosInstance';
 import {BACKEND_BMI_DEVICE_ID} from '../../Utils/labIotPerformTest';
 import {setPendingCompletedBookingItemId} from '../../Utils/multiDeviceSession';
+import DeviceEntryScreen from '../Home/Components/DeviceEntryScreen';
+import bmiDeviceImg from '../../assets/iot/BMI.png';
+import PreventiveHealthHeader from '../Home/PreventiveUser/PreventiveHealthHeader';
+import {COLORS} from '../../Constants/theme';
 
 const STORAGE_KEY = 'SCALE_WEIGHT_HISTORY';
 
@@ -91,6 +99,57 @@ function getBmiCategory(bmi: number | null): string {
   if (bmi < 25) return 'Normal';
   if (bmi < 30) return 'Overweight';
   return 'Obese';
+}
+
+function getBmiStatusLabel(bmi: number | null): string {
+  const category = getBmiCategory(bmi);
+  if (category === 'Normal') return 'HEALTHY WEIGHT';
+  if (category === '-') return 'PENDING';
+  return category.toUpperCase();
+}
+
+const HEIGHT_SLIDER_MIN = 50;
+const HEIGHT_SLIDER_MAX = 250;
+const HEIGHT_SLIDER_DEFAULT = Math.round((HEIGHT_SLIDER_MIN + HEIGHT_SLIDER_MAX) / 2);
+
+function clampHeightForSlider(raw: string): number {
+  const n = parseFloat(raw);
+  if (!Number.isFinite(n)) return HEIGHT_SLIDER_DEFAULT;
+  return Math.min(HEIGHT_SLIDER_MAX, Math.max(HEIGHT_SLIDER_MIN, n));
+}
+
+function heightToSliderRatio(height: number): number {
+  return (
+    (height - HEIGHT_SLIDER_MIN) / (HEIGHT_SLIDER_MAX - HEIGHT_SLIDER_MIN)
+  );
+}
+
+function UnitTogglePill({
+  activeUnit,
+  units,
+}: {
+  activeUnit: string;
+  units: [string, string];
+}) {
+  return (
+    <View style={styles.bmiUiUnitToggle}>
+      {units.map(unit => {
+        const isActive = unit === activeUnit;
+        return (
+          <View
+            key={unit}
+            style={isActive ? styles.bmiUiUnitActive : styles.bmiUiUnitInactive}>
+            <Text
+              style={
+                isActive ? styles.bmiUiUnitActiveText : styles.bmiUiUnitInactiveText
+              }>
+              {unit}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
 }
 
 // ─── Results bottom-sheet modal ───────────────────────────────────────────────
@@ -212,7 +271,13 @@ export default function ScaleDeviceScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList, 'ScaleDevice'>>();
 
+  const navigateToTestActivity = () => {
+    navigation.replace('TestActivity', {initialTab: 'upcoming'});
+  };
+
   const {width: windowWidth} = useWindowDimensions();
+  const sidePad = Math.min(24, Math.max(16, windowWidth * 0.04));
+  const [showDeviceScreen, setShowDeviceScreen] = useState(false);
   const [status, setStatus] = useState('Idle');
   const [devices, setDevices] = useState<Device[]>([]);
   const [connectedName, setConnectedName] = useState('');
@@ -246,6 +311,34 @@ export default function ScaleDeviceScreen() {
   const sameCount = useRef<number>(0);
   const lastWeight = useRef<number | null>(null);
   const savedStableWeight = useRef<number | null>(null);
+  const sliderTrackWidthRef = useRef(0);
+  const sliderTrackPageXRef = useRef(0);
+  const sliderTrackRef = useRef<View>(null);
+
+  useEffect(() => {
+    if (!showDeviceScreen) return;
+    setHeightCm(prev => (prev.trim() === '' ? String(HEIGHT_SLIDER_DEFAULT) : prev));
+  }, [showDeviceScreen]);
+
+  useEffect(() => {
+    let isNavigating = false;
+
+    const handleHardwareBack = () => {
+      if (isNavigating) return true;
+      isNavigating = true;
+      navigateToTestActivity();
+      return true;
+    };
+
+    let backSub: {remove: () => void} | undefined;
+    if (Platform.OS === 'android') {
+      backSub = BackHandler.addEventListener('hardwareBackPress', handleHardwareBack);
+    }
+
+    return () => {
+      backSub?.remove();
+    };
+  }, [navigation]);
 
   useEffect(() => {
     void loadHistory();
@@ -728,11 +821,50 @@ export default function ScaleDeviceScreen() {
     setStatus('Stopped');
   }
 
-  const weightFontSize = windowWidth < 340 ? ms(40) : windowWidth < 380 ? ms(48) : ms(56);
-  const weightUnitFontSize = windowWidth < 340 ? ms(16) : ms(20);
+  const weightFontSize = windowWidth < 340 ? ms(40) : ms(48);
 
   const heightNum = parseFloat(heightCm) || null;
   const canSave = weight !== null && heightNum !== null && bmi !== null;
+  const sliderHeight = clampHeightForSlider(heightCm);
+  const sliderRatio = heightToSliderRatio(sliderHeight);
+  const sliderThumbPercent = Math.max(0, Math.min(100, sliderRatio * 100));
+
+  const measureSliderTrack = useCallback(() => {
+    sliderTrackRef.current?.measureInWindow((pageX, _pageY, width) => {
+      sliderTrackPageXRef.current = pageX;
+      sliderTrackWidthRef.current = width;
+    });
+  }, []);
+
+  const setHeightFromPageX = useCallback((pageX: number) => {
+    const trackWidth = sliderTrackWidthRef.current;
+    const trackPageX = sliderTrackPageXRef.current;
+    if (!trackWidth) return;
+
+    const ratio = Math.min(1, Math.max(0, (pageX - trackPageX) / trackWidth));
+    const nextHeight = Math.round(
+      HEIGHT_SLIDER_MIN + ratio * (HEIGHT_SLIDER_MAX - HEIGHT_SLIDER_MIN),
+    );
+    setHeightCm(String(nextHeight));
+  }, []);
+
+  const heightSliderPan = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: event => {
+          measureSliderTrack();
+          setHeightFromPageX(event.nativeEvent.pageX);
+        },
+        onPanResponderMove: event => {
+          setHeightFromPageX(event.nativeEvent.pageX);
+        },
+      }),
+    [measureSliderTrack, setHeightFromPageX],
+  );
+
+  const displayWeight = weight !== null ? Number(weight).toFixed(1) : '--';
 
   async function handleSave(): Promise<void> {
     if (!canSave || weight === null || heightNum === null || bmi === null) return;
@@ -791,158 +923,254 @@ export default function ScaleDeviceScreen() {
     navigation.replace('Reports', {bookingId: route.params?.bookingId ?? undefined});
   }
 
+  if (!showDeviceScreen) {
+    return (
+      <DeviceEntryScreen
+        headerTitle="BMI"
+        image={bmiDeviceImg}
+        title="Pair Device"
+        description="We've detected your BMI device. Please make sure Bluetooth is enabled and the device is powered on nearby, then tap 'Connect' to pair the device and begin your body measurement test."
+        buttonText="Connect"
+        onBackPress={navigateToTestActivity}
+        onButtonPress={() => setShowDeviceScreen(true)}
+      />
+    );
+  }
+
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
+    <View style={styles.bmiSessionRoot}>
+      <View style={styles.bmiSessionHeaderShell}>
+        <SafeAreaView edges={['top']} style={styles.bmiSessionHeaderSafe}>
+          <PreventiveHealthHeader
+            title="Body Mass Index"
+            showBack
+            onBackPress={navigateToTestActivity}
+          />
+        </SafeAreaView>
+      </View>
+
       <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
+        style={styles.bmiSessionScroll}
+        contentContainerStyle={[
+          styles.bmiSessionScrollContent,
+          {paddingHorizontal: sidePad},
+        ]}
         showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Smart Scale</Text>
-          <Text style={styles.headerSub}>QN / FT BLE Weight Monitor</Text>
-        </View>
-
-        <View style={styles.statusCard}>
-          <Text style={styles.statusLabel}>Status</Text>
-          <Text style={styles.statusText}>{status}</Text>
-          <Text style={styles.connectedText}>
-            Connected: {connectedName || 'Not connected'}
-          </Text>
-        </View>
-
-        <View style={styles.weightCard}>
-          <Text style={styles.smallTitle}>Current Weight</Text>
-          <Text
-            style={[styles.weightValue, {fontSize: weightFontSize}]}
-            adjustsFontSizeToFit
-            minimumFontScale={0.65}
-            numberOfLines={1}>
-            {weight ? `${weight}` : '--'}
-            <Text style={[styles.weightUnit, {fontSize: weightUnitFontSize}]}> kg</Text>
-          </Text>
-
-          <View style={styles.liveBadge}>
-            <Text style={styles.liveBadgeText}>
-              {weight ? 'Receiving data' : 'Waiting for scale'}
-            </Text>
+        {/* Height card */}
+        <View style={styles.bmiUiMetricCard}>
+          <View style={styles.bmiUiCardHeader}>
+            <View style={styles.bmiUiIconLabelRow}>
+              <View style={styles.bmiUiIconBox}>
+                <MaterialCommunityIcons
+                  name="human-male-height"
+                  size={ms(22)}
+                  color={COLORS.PRIMARY}
+                />
+              </View>
+              <Text style={styles.bmiUiCardLabel}>Height</Text>
+            </View>
+            <UnitTogglePill activeUnit="cm" units={['cm', 'ft']} />
           </View>
-        </View>
 
-        <View style={styles.bmiCard}>
-          <Text style={styles.sectionTitle}>BMI Calculator</Text>
-
-          <Text style={styles.inputLabel}>Height</Text>
-          <View style={styles.inputWrap}>
+          <View style={styles.bmiUiValueRow}>
             <TextInput
               value={heightCm}
-              onChangeText={setHeightCm}
+              onChangeText={text => setHeightCm(text.replace(/[^0-9]/g, ''))}
               keyboardType="numeric"
-              placeholder="Enter height"
-              placeholderTextColor="#999"
-              style={styles.input}
+              placeholder={String(HEIGHT_SLIDER_DEFAULT)}
+              placeholderTextColor="#94A3B8"
+              style={[styles.bmiUiValueInput, {fontSize: ms(42)}]}
+              maxLength={3}
             />
-            <Text style={styles.cmText}>cm</Text>
+            <Text style={styles.bmiUiValueUnitLabel}>centimeters</Text>
           </View>
 
-          <View style={styles.bmiResultRow}>
-            <View>
-              <Text style={styles.bmiLabel}>BMI</Text>
-              <Text style={styles.bmiValue}>{bmi ?? '--'}</Text>
+          <View
+            ref={sliderTrackRef}
+            style={styles.bmiUiSliderWrap}
+            onLayout={measureSliderTrack}
+            {...heightSliderPan.panHandlers}>
+            <View style={styles.bmiUiSliderTrack}>
+              <View
+                style={[
+                  styles.bmiUiSliderFill,
+                  {width: `${sliderThumbPercent}%`},
+                ]}
+              />
             </View>
+            <View
+              style={[
+                styles.bmiUiSliderThumb,
+                {left: `${sliderThumbPercent}%`},
+              ]}
+            />
+          </View>
+        </View>
 
-            <View style={styles.categoryBox}>
-              <Text style={styles.categoryText}>{getBmiCategory(bmi)}</Text>
+        {/* Weight card */}
+        <View style={styles.bmiUiMetricCard}>
+          <View style={styles.bmiUiCardHeader}>
+            <View style={styles.bmiUiIconLabelRow}>
+              <View style={styles.bmiUiIconBox}>
+                <MaterialCommunityIcons
+                  name="scale-bathroom"
+                  size={ms(22)}
+                  color={COLORS.PRIMARY}
+                />
+              </View>
+              <Text style={styles.bmiUiCardLabel}>Weight</Text>
+            </View>
+            <UnitTogglePill activeUnit="kg" units={['kg', 'lb']} />
+          </View>
+
+          <View style={styles.bmiUiValueRow}>
+            <Text
+              style={[styles.bmiUiWeightValue, {fontSize: weightFontSize}]}
+              adjustsFontSizeToFit
+              minimumFontScale={0.65}
+              numberOfLines={1}>
+              {displayWeight}
+            </Text>
+            <Text style={styles.bmiUiValueUnitLabel}>kilograms</Text>
+          </View>
+        </View>
+
+        {/* BMI result card */}
+        <View style={styles.bmiUiResultCard}>
+          <View style={styles.bmiUiResultHeader}>
+            <Text style={styles.bmiUiResultTitle}>BMI</Text>
+            <Text style={styles.bmiUiResultSubtitle}>Current status</Text>
+          </View>
+
+          <View style={styles.bmiUiResultValueRow}>
+            <Text style={styles.bmiUiResultValue}>
+              {bmi !== null ? bmi.toFixed(1) : '--'}
+            </Text>
+            <Text style={styles.bmiUiResultUnit}>kg/m²</Text>
+          </View>
+
+          <View style={styles.bmiUiStatusRow}>
+            <View style={styles.bmiUiStatusBadge}>
+              <Text style={styles.bmiUiStatusBadgeText}>
+                {getBmiStatusLabel(bmi)}
+              </Text>
+            </View>
+            <View style={styles.bmiUiStatusCheck}>
+              <Ionicons name="checkmark" size={ms(16)} color="#fff" />
             </View>
           </View>
         </View>
 
-        <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={styles.primaryBtn}
-            onPress={() => void startScan()}>
-            <Text style={styles.primaryBtnText}>Scan Scale</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.stopBtn}
-            onPress={() => void stopAll()}>
-            <Text style={styles.stopBtnText}>Stop</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Save button */}
-        <TouchableOpacity
-          style={[styles.sdSaveBtn, (!canSave || isSaving) && styles.sdSaveBtnDisabled]}
-          onPress={() => void handleSave()}
-          disabled={!canSave || isSaving}
-          activeOpacity={0.88}>
-          {isSaving ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <Text style={styles.sdSaveBtnText}>Save</Text>
-          )}
-        </TouchableOpacity>
-
-        {/* <View style={styles.debugCard}>
-          <Text style={styles.debugTitle}>Last Packet</Text>
-          <Text style={styles.debugHex}>{lastHex || '-'}</Text>
-        </View> */}
-
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Found Devices</Text>
-        </View>
-
-        {devices.length === 0 ? (
-          <Text style={styles.emptyText}>No scale found yet</Text>
-        ) : (
-          devices.map(item => (
+        {/* Footer actions */}
+        <View style={styles.bmiUiActionWrap}>
+          <View style={styles.bmiUiActionTopRow}>
             <TouchableOpacity
-              key={item.id}
-              style={styles.deviceCard}
-              onPress={() => void connect(item)}>
-              <View style={styles.deviceLeft}>
-                <Text style={styles.deviceName} numberOfLines={2} ellipsizeMode="tail">
-                  {item.name ?? item.localName ?? 'Unknown Device'}
-                </Text>
-                <Text style={styles.deviceId} numberOfLines={2} ellipsizeMode="middle">
-                  {item.id}
-                </Text>
-                <Text style={styles.deviceInfo}>RSSI: {item.rssi}</Text>
-              </View>
-              <Text style={styles.connectText}>Connect</Text>
+              style={styles.bmiUiTryAgainBtn}
+              onPress={() => void stopAll()}
+              activeOpacity={0.88}>
+              <Text style={styles.bmiUiTryAgainBtnText}>Try Again</Text>
             </TouchableOpacity>
-          ))
-        )}
 
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Saved Records</Text>
-
-          {history.length > 0 && (
-            <TouchableOpacity onPress={() => void clearHistory()}>
-              <Text style={styles.clearText}>Clear</Text>
+            <TouchableOpacity
+              style={styles.bmiUiStopBtn}
+              onPress={() => void stopAll()}
+              activeOpacity={0.88}>
+              <Text style={styles.bmiUiStopBtnText}>Stop</Text>
             </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            style={[
+              styles.bmiUiDoneBtn,
+              (!canSave || isSaving) && styles.bmiUiDoneBtnDisabled,
+            ]}
+            onPress={() => void handleSave()}
+            disabled={!canSave || isSaving}
+            activeOpacity={0.88}>
+            {isSaving ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={styles.bmiUiDoneBtnText}>Done</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.bmiDevicesPanel}>
+          <View style={styles.bmiTabBar}>
+            <View style={styles.bmiTabActive}>
+              <Text style={styles.bmiTabActiveText}>Found Devices</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.bmiScanLink}
+              onPress={() => void startScan()}
+              activeOpacity={0.85}>
+              <Text style={styles.bmiScanLinkText}>Scan Scale</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.bmiSessionStatusText}>{status}</Text>
+          {connectedName ? (
+            <Text style={styles.bmiSessionConnectedText}>
+              Connected: {connectedName}
+            </Text>
+          ) : null}
+
+          {devices.length === 0 ? (
+            <Text style={styles.bmiSessionEmptyText}>No scale found yet</Text>
+          ) : (
+            devices.map(item => (
+              <TouchableOpacity
+                key={item.id}
+                style={styles.bmiDeviceCard}
+                onPress={() => void connect(item)}>
+                <View style={styles.bmiDeviceLeft}>
+                  <Text
+                    style={styles.bmiDeviceName}
+                    numberOfLines={2}
+                    ellipsizeMode="tail">
+                    {item.name ?? item.localName ?? 'Unknown Device'}
+                  </Text>
+                  <Text
+                    style={styles.bmiDeviceId}
+                    numberOfLines={2}
+                    ellipsizeMode="middle">
+                    {item.id}
+                  </Text>
+                  <Text style={styles.bmiDeviceInfo}>RSSI: {item.rssi}</Text>
+                </View>
+                <Text style={styles.bmiDeviceConnectText}>Connect</Text>
+              </TouchableOpacity>
+            ))
           )}
         </View>
 
-        {history.length === 0 ? (
-          <Text style={styles.emptyText}>No saved weight records</Text>
-        ) : (
-          history.map(item => (
-            <View key={item.id} style={styles.historyCard}>
-              <View>
-                <Text style={styles.historyWeight}>{item.weight} kg</Text>
-                <Text style={styles.historyDate}>{item.date}</Text>
-              </View>
+        {/* <View style={styles.bmiHistoryPanel}>
+          <View style={styles.bmiHistoryHeader}>
+            <Text style={styles.bmiHistoryTitle}>Saved Records</Text>
+            {history.length > 0 && (
+              <TouchableOpacity onPress={() => void clearHistory()}>
+                <Text style={styles.bmiHistoryClearText}>Clear</Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
-              <View style={styles.historyRight}>
-                <Text style={styles.historyBmi}>
-                  BMI {item.bmi ?? '--'}
-                </Text>
-                <Text style={styles.historyCategory}>{item.category}</Text>
+          {history.length === 0 ? (
+            <Text style={styles.bmiSessionEmptyText}>No saved weight records</Text>
+          ) : (
+            history.map(item => (
+              <View key={item.id} style={styles.bmiHistoryCard}>
+                <View>
+                  <Text style={styles.bmiHistoryWeight}>{item.weight} kg</Text>
+                  <Text style={styles.bmiHistoryDate}>{item.date}</Text>
+                </View>
+                <View style={styles.bmiHistoryRight}>
+                  <Text style={styles.bmiHistoryBmi}>BMI {item.bmi ?? '--'}</Text>
+                  <Text style={styles.bmiHistoryCategory}>{item.category}</Text>
+                </View>
               </View>
-            </View>
-          ))
-        )}
+            ))
+          )}
+        </View> */}
       </ScrollView>
 
       <ScaleBmiResultsModal
@@ -954,7 +1182,7 @@ export default function ScaleDeviceScreen() {
         onGeneratePdf={() => void handleGeneratePdf()}
         onClose={() => setShowResultsModal(false)}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -1293,6 +1521,437 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '800',
     fontSize: ms(16),
+  },
+
+  bmiSessionRoot: {
+    flex: 1,
+    minHeight: 0,
+    backgroundColor: '#F5F7FB',
+  },
+  bmiSessionHeaderShell: {
+    backgroundColor: COLORS.PRIMARY,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    overflow: 'hidden',
+  },
+  bmiSessionHeaderSafe: {
+    backgroundColor: COLORS.PRIMARY,
+  },
+  bmiSessionScroll: {
+    flex: 1,
+    backgroundColor: '#F5F7FB',
+  },
+  bmiSessionScrollContent: {
+    paddingTop: vs(16),
+    paddingBottom: vs(32),
+    gap: vs(14),
+  },
+  bmiUiMetricCard: {
+    backgroundColor: '#EEF1FC',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: COLORS.PRIMARY,
+    paddingHorizontal: ms(16),
+    paddingTop: vs(14),
+    paddingBottom: vs(16),
+  },
+  bmiUiCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: vs(10),
+    gap: ms(8),
+  },
+  bmiUiIconLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: ms(10),
+    flex: 1,
+    minWidth: 0,
+  },
+  bmiUiIconBox: {
+    width: ms(36),
+    height: ms(36),
+    borderRadius: ms(10),
+    backgroundColor: '#DCE4FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bmiUiCardLabel: {
+    fontSize: ms(18),
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  bmiUiUnitToggle: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.WHITE,
+    borderRadius: 999,
+    padding: ms(3),
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  bmiUiUnitActive: {
+    backgroundColor: COLORS.PRIMARY,
+    borderRadius: 999,
+    paddingHorizontal: ms(12),
+    paddingVertical: vs(5),
+  },
+  bmiUiUnitInactive: {
+    borderRadius: 999,
+    paddingHorizontal: ms(12),
+    paddingVertical: vs(5),
+  },
+  bmiUiUnitActiveText: {
+    color: COLORS.WHITE,
+    fontSize: ms(12),
+    fontWeight: '700',
+  },
+  bmiUiUnitInactiveText: {
+    color: '#64748B',
+    fontSize: ms(12),
+    fontWeight: '600',
+  },
+  bmiUiValueRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: ms(10),
+    marginBottom: vs(12),
+    minWidth: 0,
+  },
+  bmiUiValueInput: {
+    minWidth: ms(72),
+    padding: 0,
+    margin: 0,
+    fontWeight: '800',
+    color: '#0F172A',
+    includeFontPadding: false,
+  },
+  bmiUiWeightValue: {
+    fontWeight: '800',
+    color: '#0F172A',
+    includeFontPadding: false,
+  },
+  bmiUiValueUnitLabel: {
+    fontSize: ms(14),
+    color: '#64748B',
+    fontWeight: '500',
+    marginBottom: vs(6),
+    flexShrink: 1,
+  },
+  bmiUiSliderWrap: {
+    height: vs(36),
+    justifyContent: 'center',
+    marginTop: vs(2),
+  },
+  bmiUiSliderTrack: {
+    height: vs(6),
+    borderRadius: 999,
+    backgroundColor: '#CBD5E1',
+    overflow: 'hidden',
+  },
+  bmiUiSliderFill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: COLORS.PRIMARY,
+    borderRadius: 999,
+  },
+  bmiUiSliderThumb: {
+    position: 'absolute',
+    width: ms(22),
+    height: ms(22),
+    borderRadius: ms(11),
+    backgroundColor: COLORS.PRIMARY,
+    borderWidth: 3,
+    borderColor: COLORS.WHITE,
+    marginLeft: ms(-11),
+    top: '50%',
+    marginTop: ms(-11),
+  },
+  bmiUiResultCard: {
+    backgroundColor: '#E8F7EE',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#86C8A5',
+    paddingHorizontal: ms(16),
+    paddingTop: vs(16),
+    paddingBottom: vs(14),
+  },
+  bmiUiResultHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: ms(8),
+    marginBottom: vs(8),
+  },
+  bmiUiResultTitle: {
+    fontSize: ms(34),
+    fontWeight: '800',
+    color: '#1F7A4D',
+  },
+  bmiUiResultSubtitle: {
+    fontSize: ms(14),
+    fontWeight: '500',
+    color: '#3D9970',
+  },
+  bmiUiResultValueRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: ms(8),
+    marginBottom: vs(14),
+  },
+  bmiUiResultValue: {
+    fontSize: ms(52),
+    fontWeight: '800',
+    color: '#1F7A4D',
+    lineHeight: ms(56),
+  },
+  bmiUiResultUnit: {
+    fontSize: ms(24),
+    fontWeight: '700',
+    color: '#1F7A4D',
+    marginBottom: vs(8),
+  },
+  bmiUiStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: ms(10),
+  },
+  bmiUiStatusBadge: {
+    backgroundColor: COLORS.WHITE,
+    borderRadius: 999,
+    paddingHorizontal: ms(14),
+    paddingVertical: vs(7),
+  },
+  bmiUiStatusBadgeText: {
+    color: '#64748B',
+    fontSize: ms(11),
+    fontWeight: '700',
+    letterSpacing: 0.4,
+  },
+  bmiUiStatusCheck: {
+    width: ms(28),
+    height: ms(28),
+    borderRadius: ms(8),
+    backgroundColor: '#22C55E',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bmiUiActionWrap: {
+    gap: vs(12),
+    marginTop: vs(2),
+  },
+  bmiUiActionTopRow: {
+    flexDirection: 'row',
+    gap: ms(12),
+  },
+  bmiUiTryAgainBtn: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: COLORS.PRIMARY,
+    borderRadius: 10,
+    paddingVertical: vs(14),
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.WHITE,
+  },
+  bmiUiTryAgainBtnText: {
+    color: COLORS.PRIMARY,
+    fontSize: ms(15),
+    fontWeight: '700',
+  },
+  bmiUiStopBtn: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: COLORS.PRIMARY,
+    borderRadius: 10,
+    paddingVertical: vs(14),
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.WHITE,
+  },
+  bmiUiStopBtnText: {
+    color: COLORS.PRIMARY,
+    fontSize: ms(15),
+    fontWeight: '700',
+  },
+  bmiUiDoneBtn: {
+    width: '100%',
+    backgroundColor: COLORS.PRIMARY,
+    borderRadius: 10,
+    paddingVertical: vs(14),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bmiUiDoneBtnDisabled: {
+    opacity: 0.45,
+  },
+  bmiUiDoneBtnText: {
+    color: COLORS.WHITE,
+    fontSize: ms(15),
+    fontWeight: '700',
+  },
+  bmiDevicesPanel: {
+    backgroundColor: COLORS.WHITE,
+    borderRadius: 16,
+    paddingHorizontal: ms(16),
+    paddingTop: vs(14),
+    paddingBottom: vs(16),
+    borderWidth: 1,
+    borderColor: COLORS.CARD_BORDER,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  bmiTabBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: vs(12),
+    gap: ms(10),
+  },
+  bmiTabActive: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 999,
+    paddingHorizontal: ms(14),
+    paddingVertical: vs(8),
+  },
+  bmiTabActiveText: {
+    color: COLORS.PRIMARY,
+    fontWeight: '700',
+    fontSize: ms(14),
+  },
+  bmiScanLink: {
+    paddingHorizontal: ms(4),
+    paddingVertical: vs(6),
+  },
+  bmiScanLinkText: {
+    color: COLORS.PRIMARY,
+    fontWeight: '700',
+    fontSize: ms(13),
+  },
+  bmiSessionStatusText: {
+    color: '#64748B',
+    fontSize: ms(12),
+    marginBottom: vs(4),
+  },
+  bmiSessionConnectedText: {
+    color: '#334155',
+    fontSize: ms(12),
+    fontWeight: '600',
+    marginBottom: vs(10),
+  },
+  bmiSessionEmptyText: {
+    color: '#94A3B8',
+    fontSize: ms(13),
+    marginBottom: vs(8),
+  },
+  bmiDeviceCard: {
+    backgroundColor: '#F8FAFC',
+    padding: ms(12),
+    borderRadius: 12,
+    marginBottom: vs(8),
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: ms(8),
+    minWidth: 0,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  bmiDeviceLeft: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: ms(8),
+  },
+  bmiDeviceName: {
+    fontSize: ms(14),
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  bmiDeviceId: {
+    fontSize: ms(11),
+    color: '#64748B',
+    marginTop: vs(3),
+  },
+  bmiDeviceInfo: {
+    fontSize: ms(11),
+    color: '#94A3B8',
+    marginTop: vs(3),
+  },
+  bmiDeviceConnectText: {
+    color: COLORS.PRIMARY,
+    fontWeight: '700',
+    fontSize: ms(13),
+    flexShrink: 0,
+  },
+  bmiHistoryPanel: {
+    backgroundColor: COLORS.WHITE,
+    borderRadius: 16,
+    paddingHorizontal: ms(16),
+    paddingTop: vs(14),
+    paddingBottom: vs(16),
+    borderWidth: 1,
+    borderColor: COLORS.CARD_BORDER,
+  },
+  bmiHistoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: vs(10),
+  },
+  bmiHistoryTitle: {
+    fontSize: ms(16),
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  bmiHistoryClearText: {
+    color: '#DC2626',
+    fontWeight: '700',
+    fontSize: ms(13),
+  },
+  bmiHistoryCard: {
+    backgroundColor: '#F8FAFC',
+    padding: ms(14),
+    borderRadius: 12,
+    marginBottom: vs(8),
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: ms(10),
+    minWidth: 0,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  bmiHistoryWeight: {
+    fontSize: ms(18),
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  bmiHistoryDate: {
+    fontSize: ms(11),
+    color: '#64748B',
+    marginTop: vs(4),
+  },
+  bmiHistoryRight: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    flexShrink: 0,
+    maxWidth: '48%',
+  },
+  bmiHistoryBmi: {
+    fontSize: ms(14),
+    fontWeight: '700',
+    color: COLORS.PRIMARY,
+    textAlign: 'right',
+  },
+  bmiHistoryCategory: {
+    fontSize: ms(11),
+    color: '#64748B',
+    marginTop: vs(4),
+    textAlign: 'right',
   },
 
   // ─── Results bottom-sheet modal ─────────────────────────────────────────────

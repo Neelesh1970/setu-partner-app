@@ -30,6 +30,7 @@ import PreventiveHealthHeader from './PreventiveHealthHeader';
 import axiosInstance from '../../../api/axiosInstance';
 import { postAuthLogout } from './PreventiveHealthAPI';
 import { logoutUser } from '../../../auth/logoutUser';
+import CustomPopup from '../Components/CustomPopup';
 
 const PRIMARY = '#1C39BB';
 const LABEL_GRAY = '#6B7280';
@@ -657,48 +658,20 @@ const Profile: React.FC = () => {
         </KeyboardAvoidingView>
       </Modal>
 
-      <Modal
-        visible={logoutModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={closeLogoutModal}
-        statusBarTranslucent
-      >
-        <View style={styles.logoutModalOverlay}>
-          <View style={styles.logoutModalBox}>
-            <Ionicons
-              name="log-out-outline"
-              size={28}
-              color={PRIMARY}
-              style={{ marginBottom: 10 }}
-            />
-
-            <Text style={styles.logoutModalTitle}>Logout</Text>
-
-            <Text style={styles.logoutModalMessage}>Are you sure you want to logout?</Text>
-
-            <View style={styles.logoutModalActions}>
-              <TouchableOpacity
-                style={styles.logoutCancelBtn}
-                onPress={closeLogoutModal}
-                disabled={loggingOut}
-              >
-                <Text style={styles.logoutCancelText}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.logoutConfirmBtn}
-                onPress={confirmLogout}
-                disabled={loggingOut}
-              >
-                <Text style={styles.logoutConfirmText}>
-                  {loggingOut ? 'Logging out...' : 'Logout'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <CustomPopup
+        isVisible={logoutModalVisible}
+        onClose={closeLogoutModal}
+        onConfirm={() => {
+          if (!loggingOut) {
+            confirmLogout();
+          }
+        }}
+        title="Logout"
+        message="Are you sure you want to logout?"
+        iconName="log-out-outline"
+        cancelText="Cancel"
+        confirmText={loggingOut ? 'Logging out...' : 'Logout'}
+      />
     </View>
   );
 };
@@ -1048,52 +1021,6 @@ const styles = StyleSheet.create({
     fontSize: s(16),
     fontWeight: '700',
     color: PRIMARY,
-  },
-  logoutModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  logoutModalBox: {
-    width: '80%',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    alignItems: 'center',
-  },
-  logoutModalTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#0F172A',
-  },
-  logoutModalMessage: {
-    marginTop: 8,
-    fontSize: 13,
-    color: '#64748B',
-    textAlign: 'center',
-  },
-  logoutModalActions: {
-    flexDirection: 'row',
-    marginTop: 20,
-  },
-  logoutCancelBtn: {
-    padding: 10,
-    marginRight: 10,
-  },
-  logoutConfirmBtn: {
-    backgroundColor: PRIMARY,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  logoutCancelText: {
-    color: '#64748B',
-    fontWeight: '600',
-  },
-  logoutConfirmText: {
-    color: '#fff',
-    fontWeight: '700',
   },
 });
 
