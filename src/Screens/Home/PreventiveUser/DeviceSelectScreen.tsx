@@ -109,6 +109,10 @@ const DeviceSelectScreen: React.FC = () => {
   const completedIdsRef = useRef(completedIds);
   useEffect(() => { completedIdsRef.current = completedIds; }, [completedIds]);
 
+  const navigateToTestActivity = useCallback(() => {
+    navigation.replace('TestActivity', { initialTab: 'upcoming' });
+  }, [navigation]);
+
   useFocusEffect(
     useCallback(() => {
       // Consume any pending completed booking_item_id left by an IOT screen via goBack().
@@ -122,7 +126,7 @@ const DeviceSelectScreen: React.FC = () => {
       const handleBack = () => {
         if (isNavigating) return true;
         isNavigating = true;
-        navigation.goBack();
+        navigateToTestActivity();
         return true;
       };
       let sub: { remove: () => void } | undefined;
@@ -130,7 +134,7 @@ const DeviceSelectScreen: React.FC = () => {
         sub = BackHandler.addEventListener('hardwareBackPress', handleBack);
       }
       return () => sub?.remove();
-    }, [navigation]),
+    }, [navigateToTestActivity]),
   );
 
   const handlePerform = useCallback(
@@ -175,7 +179,7 @@ const DeviceSelectScreen: React.FC = () => {
           <SafeAreaView edges={['top']} style={styles.headerSafe}>
             <PreventiveHealthHeader
               title="Select Test"
-              onBackPress={() => navigation.goBack()}
+              onBackPress={navigateToTestActivity}
             />
           </SafeAreaView>
         </View>

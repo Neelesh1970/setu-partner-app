@@ -22,7 +22,9 @@ import type { RootStackParamList } from '../../../navigation/types';
 import {
   formatLabSlotTimeRangeIst,
   formatLabSlotYmdIst,
+  formatLocalYmd,
   getLabPatients,
+  labPatientSlotBounds,
   labPatientTestLabel,
   type LabPatientFilter,
   type LabPatientRecord,
@@ -36,6 +38,12 @@ const PRIMARY = COLORS.PRIMARY;
 const CARD_BORDER = '#E5E7EB';
 const LABEL_GRAY = '#6B7280';
 const TEXT_DARK = '#111827';
+
+/**
+ * When true: Upcoming/Pending use slot-window rules for Continue (Missed stays always enabled).
+ * When false: Continue is always clickable anytime (original behaviour).
+ */
+const ENABLE_CONTINUE_SLOT_WINDOW_CHECK = false;
 
 type TestDetailsNav = NativeStackNavigationProp<RootStackParamList, 'TestDetails'>;
 
@@ -215,6 +223,33 @@ const TestDetails: React.FC = () => {
     };
   }, [patient]);
 
+  const tabFilter = filter as LabPatientFilter;
+  const enforceSlotWindow =
+    tabFilter === 'upcoming' || tabFilter === 'pending';
+
+  const canContinueNow = useMemo(() => {
+    if (!patient) return false;
+
+    if (!ENABLE_CONTINUE_SLOT_WINDOW_CHECK) return true;
+
+    // Missed (and other tabs): Continue always available.
+    if (!enforceSlotWindow) return true;
+
+    // Upcoming & Pending: same rules as TestActivity Perform Test button.
+    if (patient.can_perform_test === false) return false;
+
+    const bounds = labPatientSlotBounds(patient);
+    if (!bounds) return false;
+
+    const now = new Date();
+    if (formatLocalYmd(bounds.start) !== formatLocalYmd(now)) return false;
+
+    return (
+      now.getTime() >= bounds.start.getTime() &&
+      now.getTime() < bounds.end.getTime()
+    );
+  }, [patient, enforceSlotWindow]);
+
   useFocusEffect(
     useCallback(() => {
       let isNavigating = false;
@@ -315,12 +350,23 @@ const TestDetails: React.FC = () => {
 
           <View style={[styles.footer, { paddingBottom: bottomPad, paddingHorizontal: horizontalPad }]}>
             <TouchableOpacity
-              style={styles.continueBtn}
+              style={[
+                styles.continueBtn,
+                !canContinueNow ? styles.continueBtnDisabled : null,
+              ]}
               onPress={onContinue}
               activeOpacity={0.9}
+              disabled={!canContinueNow}
               accessibilityRole="button"
             >
-              <Text style={styles.continueBtnText}>Continue</Text>
+              <Text
+                style={[
+                  styles.continueBtnText,
+                  !canContinueNow ? styles.continueBtnTextDisabled : null,
+                ]}
+              >
+                Continue
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -479,10 +525,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: '100%',
   },
+  continueBtnDisabled: {
+    backgroundColor: '#9CA3AF',
+  },
   continueBtnText: {
     color: COLORS.WHITE,
     fontSize: ms(16),
     fontWeight: '700',
+  },
+  continueBtnTextDisabled: {
+    color: '#F3F4F6',
   },
 
 });

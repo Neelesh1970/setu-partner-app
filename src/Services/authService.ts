@@ -281,7 +281,9 @@ function parseLoginVerifyOtpResponse(raw: unknown): VerifyOtpResponse {
 export const verifyLoginOtp = async (
   payload: VerifyOtpPayload,
 ): Promise<VerifyOtpResponse> => {
+  console.log('[verifyLoginOtp] POST /auth/otp/verify — request:', JSON.stringify(payload, null, 2));
   const { data } = await axiosInstance.post<unknown>('/auth/otp/verify', payload);
+  console.log('[verifyLoginOtp] POST /auth/otp/verify — raw response:', JSON.stringify(data, null, 2));
   const parsed = parseLoginVerifyOtpResponse(data);
   console.log(
     'Labworker information',
@@ -502,6 +504,29 @@ export interface IdentityVerificationResponse {
   message: string;
   data?: IdentityVerificationRecord;
 }
+
+export const isApprovedIdentityVerification = (
+  record: IdentityVerificationRecord | undefined | null,
+): boolean => {
+  if (!record) {
+    return false;
+  }
+  const status = String(record.verification_status ?? '').toUpperCase();
+  return status === 'APPROVED' || record.is_approved === true;
+};
+
+/** True when KYC documents were uploaded and await admin review (not a register stub). */
+export const hasSubmittedIdentityVerification = (
+  record: IdentityVerificationRecord | undefined | null,
+): boolean => {
+  if (!record) {
+    return false;
+  }
+  if (record.submitted === true) {
+    return true;
+  }
+  return Boolean(record.document_url?.trim());
+};
 
 const IDENTITY_VERIFICATION_ENDPOINTS = ['/identity-verification', '/lab/identity-verification'] as const;
 

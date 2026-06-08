@@ -5,9 +5,12 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
+  SafeAreaView,
+  Platform,
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
-import { ms, s, vs } from "react-native-size-matters";
+import { BlurView } from "@react-native-community/blur";
+import { COLORS } from "../../../Constants/theme";
 
 interface CustomPopupProps {
   isVisible: boolean;
@@ -18,7 +21,22 @@ interface CustomPopupProps {
   iconName?: string;
   showIcon?: boolean;
   confirmText?: string;
+  cancelText?: string;
 }
+
+const ICON_COLOR = COLORS.PRIMARY;
+
+const PopupBackdrop = () =>
+  Platform.OS === "ios" ? (
+    <BlurView
+      style={StyleSheet.absoluteFill}
+      blurType="light"
+      blurAmount={8}
+      reducedTransparencyFallbackColor="rgba(0,0,0,0.45)"
+    />
+  ) : (
+    <View style={[StyleSheet.absoluteFill, styles.androidBackdrop]} />
+  );
 
 const CustomPopup: React.FC<CustomPopupProps> = ({
   isVisible,
@@ -29,6 +47,7 @@ const CustomPopup: React.FC<CustomPopupProps> = ({
   iconName = "checkmark-circle-outline",
   showIcon = true,
   confirmText = "OK",
+  cancelText,
 }) => {
   return (
     <Modal
@@ -36,26 +55,43 @@ const CustomPopup: React.FC<CustomPopupProps> = ({
       transparent
       animationType="fade"
       onRequestClose={onClose}
+      statusBarTranslucent={Platform.OS === "android"}
     >
       <View style={styles.overlay}>
-        <View style={styles.card}>
-          {showIcon ? (
-            <Ionicons
-              name={iconName}
-              size={ms(52)}
-              color="#22C55E"
-              style={styles.icon}
-            />
-          ) : null}
+        <PopupBackdrop />
 
-          <Text style={styles.title}>{title}</Text>
+        <SafeAreaView style={styles.centered}>
+          <View style={styles.container}>
+            {showIcon ? (
+              <View
+                style={[
+                  styles.iconBadge,
+                  { backgroundColor: `${ICON_COLOR}14` },
+                ]}
+              >
+                <Ionicons
+                  name={iconName}
+                  size={50}
+                  color={ICON_COLOR}
+                />
+              </View>
+            ) : null}
 
-          {!!message && <Text style={styles.message}>{message}</Text>}
+            <Text style={styles.title}>{title}</Text>
 
-          <TouchableOpacity style={styles.btn} onPress={onConfirm}>
-            <Text style={styles.btnText}>{confirmText}</Text>
-          </TouchableOpacity>
-        </View>
+            {!!message && <Text style={styles.message}>{message}</Text>}
+
+            {cancelText ? (
+              <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
+                <Text style={styles.cancelText}>{cancelText}</Text>
+              </TouchableOpacity>
+            ) : null}
+
+            <TouchableOpacity style={styles.confirmButton} onPress={onConfirm}>
+              <Text style={styles.confirmText}>{confirmText}</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
       </View>
     </Modal>
   );
@@ -66,51 +102,78 @@ export default CustomPopup;
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+  androidBackdrop: {
+    backgroundColor: "rgba(17, 24, 39, 0.4)",
+  },
+  centered: {
+    flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },
-
-  card: {
-    width: "85%", // ✅ slightly wider
+  container: {
+    width: "84%",
     backgroundColor: "#FFFFFF",
-    borderRadius: ms(20), // ✅ smoother corners
-    paddingVertical: vs(24),
-    paddingHorizontal: ms(20),
+    borderRadius: 20,
+    paddingVertical: 26,
+    paddingHorizontal: 22,
     alignItems: "center",
+    marginBottom: 24,
+    shadowColor: "#111827",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 10,
   },
-
-  icon: {
-    marginBottom: vs(10),
-  },
-
-  title: {
-    fontSize: s(18), // ✅ slightly bigger
-    fontWeight: "700",
-    color: "#0F172A",
-    textAlign: "center",
-    marginBottom: vs(6),
-  },
-
-  message: {
-    fontSize: s(14),
-    color: "#64748B",
-    textAlign: "center",
-    marginBottom: vs(18), // ✅ more spacing
-  },
-
-  btn: {
-    width: "100%", // ✅ FULL WIDTH (MOST IMPORTANT FIX)
-    backgroundColor: "#0451CF",
-    borderRadius: ms(26),
-    paddingVertical: vs(14), // ✅ taller button
+  iconBadge: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     alignItems: "center",
     justifyContent: "center",
+    marginBottom: 14,
   },
-
-  btnText: {
-    color: "#FFFFFF",
-    fontSize: s(16),
-    fontWeight: "700",
+  title: {
+    fontSize: 18,
+    fontWeight: "600",
+    marginBottom: 8,
+    textAlign: "center",
+    color: "#111827",
+  },
+  message: {
+    fontSize: 14,
+    color: "#6B7280",
+    textAlign: "center",
+    marginBottom: 20,
+    lineHeight: 21,
+    paddingHorizontal: 2,
+  },
+  cancelButton: {
+    width: "100%",
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: "center",
+    marginVertical: 4,
+    backgroundColor: "#F1F5F9",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  cancelText: {
+    color: "#334155",
+    fontWeight: "600",
+    fontSize: 15,
+  },
+  confirmButton: {
+    width: "100%",
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: "center",
+    marginVertical: 4,
+    backgroundColor: COLORS.PRIMARY,
+  },
+  confirmText: {
+    color: "white",
+    fontWeight: "600",
+    fontSize: 15,
   },
 });

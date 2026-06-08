@@ -23,6 +23,7 @@ import type { PickedFile, IdProofTypeApi } from '../../Services/identityVerifica
 import {
   submitIdentityVerification,
   getIdentityVerificationStatus,
+  type IdentityVerificationRecord,
 } from '../../Services/authService';
 
 type IdentityNavProp = NativeStackNavigationProp<
@@ -38,6 +39,25 @@ const ID_PROOF_OPTIONS: ReadonlyArray<{ label: string; apiValue: IdProofTypeApi 
   { label: 'Voter ID', apiValue: 'VOTER_ID' },
 ];
 
+const isApprovedVerification = (record: IdentityVerificationRecord | undefined): boolean => {
+  if (!record) {
+    return false;
+  }
+  const status = String(record.verification_status ?? '').toUpperCase();
+  return status === 'APPROVED' || record.is_approved === true;
+};
+
+/** Only treat as submitted when the backend confirms upload (not a stub register record). */
+const hasSubmittedVerification = (record: IdentityVerificationRecord | undefined): boolean => {
+  if (!record) {
+    return false;
+  }
+  if (record.submitted === true) {
+    return true;
+  }
+  return Boolean(record.document_url?.trim());
+};
+
 const IdentityVerificationScreen: React.FC = () => {
   const navigation = useNavigation<IdentityNavProp>();
 
@@ -50,14 +70,14 @@ const IdentityVerificationScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [headerChecking, setHeaderChecking] = useState(false);
 
-  // Shared status check: navigate to Home if APPROVED, to VerificationPending if pending record exists.
+  // Redirect to Home if approved; to VerificationPending only after documents were submitted.
   const checkStatusForRedirect = useCallback(async () => {
     try {
       const statusRes = await getIdentityVerificationStatus();
-      const status = String(statusRes?.data?.verification_status ?? '').toUpperCase();
-      if (status === 'APPROVED' || statusRes?.data?.is_approved === true) {
+      const record = statusRes?.data;
+      if (isApprovedVerification(record)) {
         navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
-      } else if (statusRes?.data) {
+      } else if (hasSubmittedVerification(record)) {
         navigation.reset({ index: 0, routes: [{ name: 'VerificationPending' }] });
       }
     } catch (e) {
@@ -83,8 +103,7 @@ const IdentityVerificationScreen: React.FC = () => {
     setHeaderChecking(true);
     try {
       const statusRes = await getIdentityVerificationStatus();
-      const status = String(statusRes?.data?.verification_status ?? '').toUpperCase();
-      if (status === 'APPROVED' || statusRes?.data?.is_approved === true) {
+      if (isApprovedVerification(statusRes?.data)) {
         navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
       }
     } catch (e) {
