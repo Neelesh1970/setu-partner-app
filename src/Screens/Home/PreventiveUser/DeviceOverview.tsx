@@ -136,7 +136,6 @@ const DeviceOverview = ({ navigation, route }: any) => {
       setCartData(res ?? null);
       setAddedVisible(true);
     } catch (e) {
-      console.log("Add to cart error", e);
     } finally {
       setIsAddingToCart(false);
     }

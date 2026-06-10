@@ -93,7 +93,6 @@ export const scanDevices = (
     } catch {
       /* already stopped */
     }
-    console.log('🛑 Scan stopped');
     if (notify) {
       onFinish?.();
     }
@@ -105,14 +104,12 @@ export const scanDevices = (
     /* no active scan */
   }
 
-  console.log('🔍 Scale BLE scan started (5s, all advertisers, allowDuplicates)');
 
   manager.startDeviceScan(
     null,
     { allowDuplicates: true },
     (error, device) => {
     if (error) {
-      console.log('❌ Scan error:', error);
       onScanError?.(error);
       finish(false);
       return;
@@ -151,12 +148,10 @@ export const connectDevice = async (
   onRawNotify: ScaleRawNotifyHandler
 ): Promise<Device> => {
   try {
-    console.log('🔌 Connecting...');
 
     const connected = await device.connect();
     await connected.discoverAllServicesAndCharacteristics();
 
-    console.log('✅ Connected:', connected.id);
 
     startNotification(connected, onRawNotify);
 
@@ -165,7 +160,6 @@ export const connectDevice = async (
 
     return connected;
   } catch (error) {
-    console.log('❌ Connection error:', error);
     throw error;
   }
 };
@@ -178,7 +172,6 @@ const startNotification = (device: Device, onRawNotify: ScaleRawNotifyHandler) =
   const generation = bleNotifyGeneration;
 
   deviceDisconnectSub = device.onDisconnected((_err, d) => {
-    console.log('[Scale BLE] onDisconnected', d.id);
     teardownScaleCharacteristicSession();
   });
 
@@ -190,7 +183,6 @@ const startNotification = (device: Device, onRawNotify: ScaleRawNotifyHandler) =
         return;
       }
       if (error) {
-        console.log('❌ Notify error:', error);
         return;
       }
 
@@ -207,8 +199,6 @@ const startNotification = (device: Device, onRawNotify: ScaleRawNotifyHandler) =
       if (logThis) {
         lastNotifyHex = hex;
         lastNotifyHexAt = now;
-        console.log('[Scale BLE] notify HEX:', hex);
-        console.log('[Scale BLE] notify BYTES:', bytes);
       }
     }
   );
@@ -229,9 +219,7 @@ const sendStartCommand = async (device: Device) => {
       await device.writeCharacteristicWithoutResponseForService(SERVICE_UUID, WRITE_CHAR, payload);
     }
 
-    console.log('📤 Start command sent');
   } catch (error) {
-    console.log('⚠️ Write failed (maybe not required):', error);
   }
 };
 
@@ -244,9 +232,7 @@ export const disconnectDevice = async (device: Device) => {
     lastNotifyHex = '';
     lastNotifyHexAt = 0;
     await device.cancelConnection();
-    console.log('🔌 Disconnected');
   } catch (e) {
-    console.log('❌ Disconnect error:', e);
     teardownScaleCharacteristicSession();
     lastNotifyHex = '';
     lastNotifyHexAt = 0;
@@ -260,6 +246,5 @@ export const destroyManager = () => {
   try {
     manager.destroy();
   } catch (e) {
-    console.log('❌ Destroy error:', e);
   }
 };

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import {
   View,
   Text,
@@ -330,7 +331,7 @@ const Reports: React.FC = () => {
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const requestSeq = useRef(0);
-  const listScrollRef = useRef<ScrollView>(null);
+  const listScrollRef = useRef<FlashListRef<ReportRow>>(null);
   const scrollAfterPageLoadRef = useRef(false);
 
   const chips: ChipItem[] = useMemo(() => {
@@ -485,22 +486,18 @@ const Reports: React.FC = () => {
   const downloadReport = useCallback(async (item: ReportRow) => {
     const rowKey = String(item.bookingId ?? item.id ?? '').trim();
     if (!rowKey) {
-      console.log('[download] no id available for row');
       return;
     }
     if (downloadingIds.has(rowKey)) {
-      console.log('[download] already downloading:', rowKey);
       return;
     }
 
     setDownloadingIds((prev) => new Set(prev).add(rowKey));
-    console.log('[download] starting download for bookingId:', rowKey);
 
     try {
       // Prefer the URL already in the list data; fall back to the by-booking API.
       let url = String(item.reportUrl ?? '').trim();
       if (!url) {
-        console.log('[download] reportUrl missing in list data, fetching via API for:', rowKey);
         const res = await axiosInstance.get<ReportByBookingResponse>(
           `reports/by-booking/${rowKey}`,
         );
@@ -514,13 +511,10 @@ const Reports: React.FC = () => {
         throw new Error('Report URL not available');
       }
 
-      console.log('[download] report URL:', url);
-
       const safeId = rowKey.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 16);
       const filename = `report_${safeId}_${Date.now()}.pdf`;
 
       if (Platform.OS === 'android') {
-        console.log('[download] using Android DownloadManager, filename:', filename);
         await ReactNativeBlobUtil.config({
           addAndroidDownloads: {
             useDownloadManager: true,
@@ -532,16 +526,13 @@ const Reports: React.FC = () => {
             path: `${ReactNativeBlobUtil.fs.dirs.DownloadDir}/${filename}`,
           },
         }).fetch('GET', url);
-        console.log('[download] Android DownloadManager registered successfully');
         setDownloadStartedPopupVisible(true);
       } else {
         // iOS: open URL in browser/PDF viewer
-        console.log('[download] iOS — opening URL in browser:', url);
         await Linking.openURL(url);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Something went wrong';
-      console.log('[download] failed:', msg, err);
       Alert.alert('Download failed', msg);
     } finally {
       setDownloadingIds((prev) => {
@@ -587,12 +578,6 @@ const Reports: React.FC = () => {
       setReportUrl(url);
     } catch (e) {
       if (seq !== openReportSeqRef.current) return;
-      const err = e as Error & { status?: number; responseData?: unknown };
-      console.log('[report] request failed — diagnostics:', {
-        message: err?.message,
-        httpStatus: err?.status,
-        responseBody: err?.responseData,
-      });
       const msg = e instanceof Error ? e.message : 'Failed to load report';
       setReportError(msg);
     } finally {
@@ -618,9 +603,8 @@ const Reports: React.FC = () => {
             return;
           }
         }
-        console.log('[reports] no patient found for booking_id:', id);
-      } catch (e) {
-        console.log('[reports] failed to resolve TestDetails by booking_id:', id, e);
+      } catch {
+        // ignore — TestDetails navigation is best-effort
       }
     },
     [navigation],
@@ -663,7 +647,7 @@ const Reports: React.FC = () => {
     if (!isLoading && scrollAfterPageLoadRef.current) {
       scrollAfterPageLoadRef.current = false;
       requestAnimationFrame(() => {
-        listScrollRef.current?.scrollTo({ y: 0, animated: true });
+        listScrollRef.current?.scrollToOffset({ offset: 0, animated: true });
       });
     }
   }, [isLoading, rows]);
@@ -673,12 +657,138 @@ const Reports: React.FC = () => {
   useEffect(() => {
     if (autoOpenBookingId && !autoOpenTriggeredRef.current) {
       autoOpenTriggeredRef.current = true;
-      console.log('[Reports] auto-open report after PDF generate, bookingId:', autoOpenBookingId);
       openReportByBookingId(autoOpenBookingId);
     }
     // openReportByBookingId has empty deps and is stable; autoOpenBookingId is from route params (stable)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const reportRowCount = (rows ?? []).length;
+
+  const renderReportItem = useCallback(
+    ({ item, index }: { item: ReportRow; index: number }) => (
+      <ReportListItem
+        item={item}
+        isLast={index === reportRowCount - 1}
+        onSeeDetails={() => {
+          void goToTestDetailsByBookingId(item.bookingId ?? item.id);
+        }}
+        onView={() => {
+          if (!item.bookingId) {
+            return;
+          }
+          openReportByBookingId(item.bookingId);
+        }}
+        onDownload={() => {
+          void downloadReport(item);
+        }}
+        onCollectCash={async () => {
+          if (!item.bookingId || collectingCashId) return;
+          setCollectingCashId(item.bookingId);
+          try {
+            await collectCashPayment(item.bookingId);
+            navigation.navigate('CashPaymentReceive', {
+              bookingId: item.bookingId,
+              amount: item.amount ? Number(item.amount) : null,
+            });
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : 'Failed to collect cash. Please try again.';
+            Alert.alert('Collect Cash', msg);
+          } finally {
+            setCollectingCashId(null);
+          }
+        }}
+        isDownloading={downloadingIds.has(String(item.bookingId ?? item.id ?? '').trim())}
+        isCollectingCash={collectingCashId === item.bookingId}
+      />
+    ),
+    [
+      reportRowCount,
+      goToTestDetailsByBookingId,
+      openReportByBookingId,
+      downloadReport,
+      collectingCashId,
+      downloadingIds,
+      navigation,
+    ],
+  );
+
+  const reportListFooter = useMemo(
+    () =>
+      totalPages > 1 ? (
+        <View style={styles.paginationRow}>
+          <TouchableOpacity
+            style={[
+              styles.paginationNavBtn,
+              currentPage <= 1 && styles.paginationNavBtnDisabled,
+            ]}
+            onPress={() => goToPage(currentPage - 1)}
+            disabled={currentPage <= 1 || isLoading}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Previous page"
+          >
+            <Text
+              style={[
+                styles.paginationNavText,
+                currentPage <= 1 && styles.paginationNavTextDisabled,
+              ]}
+            >
+              Prev
+            </Text>
+          </TouchableOpacity>
+
+          {visiblePages.map(page => {
+            const isActive = page === currentPage;
+            return (
+              <TouchableOpacity
+                key={page}
+                style={[
+                  styles.paginationPageBtn,
+                  isActive && styles.paginationPageBtnActive,
+                ]}
+                onPress={() => goToPage(page)}
+                disabled={isActive || isLoading}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={`Page ${page}`}
+              >
+                <Text
+                  style={[
+                    styles.paginationPageText,
+                    isActive && styles.paginationPageTextActive,
+                  ]}
+                >
+                  {page}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+
+          <TouchableOpacity
+            style={[
+              styles.paginationNavBtn,
+              currentPage >= totalPages && styles.paginationNavBtnDisabled,
+            ]}
+            onPress={() => goToPage(currentPage + 1)}
+            disabled={currentPage >= totalPages || isLoading}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Next page"
+          >
+            <Text
+              style={[
+                styles.paginationNavText,
+                currentPage >= totalPages && styles.paginationNavTextDisabled,
+              ]}
+            >
+              Next
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : null,
+    [totalPages, currentPage, isLoading, visiblePages, goToPage],
+  );
 
   return (
     <>
@@ -712,130 +822,24 @@ const Reports: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        <ScrollView
+        <FlashList
           ref={listScrollRef}
+          data={rows ?? []}
+          renderItem={renderReportItem}
+          keyExtractor={item => item.id}
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-        >
-          {(rows ?? []).map((item, index, arr) => (
-            <ReportListItem
-              key={item.id}
-              item={item}
-              isLast={index === arr.length - 1}
-              onSeeDetails={() => {
-                void goToTestDetailsByBookingId(item.bookingId ?? item.id);
-              }}
-              onView={() => {
-                if (!item.bookingId) {
-                  console.log('[report] bookingId missing for row:', item.id);
-                  return;
-                }
-                openReportByBookingId(item.bookingId);
-              }}
-              onDownload={() => {
-                void downloadReport(item);
-              }}
-              onCollectCash={async () => {
-                if (!item.bookingId || collectingCashId) return;
-                setCollectingCashId(item.bookingId);
-                try {
-                  await collectCashPayment(item.bookingId);
-                  navigation.navigate('CashPaymentReceive', {
-                    bookingId: item.bookingId,
-                    amount: item.amount ? Number(item.amount) : null,
-                  });
-                } catch (e) {
-                  const msg = e instanceof Error ? e.message : 'Failed to collect cash. Please try again.';
-                  Alert.alert('Collect Cash', msg);
-                } finally {
-                  setCollectingCashId(null);
-                }
-              }}
-              isDownloading={downloadingIds.has(String(item.bookingId ?? item.id ?? '').trim())}
-              isCollectingCash={collectingCashId === item.bookingId}
-            />
-          ))}
-          {!isLoading && (rows ?? []).length === 0 ? (
-            <View style={styles.emptyStateWrap}>
-              <Text style={styles.emptyStateText}>No reports Available</Text>
-            </View>
-          ) : null}
-
-          {totalPages > 1 ? (
-            <View style={styles.paginationRow}>
-              <TouchableOpacity
-                style={[
-                  styles.paginationNavBtn,
-                  currentPage <= 1 && styles.paginationNavBtnDisabled,
-                ]}
-                onPress={() => goToPage(currentPage - 1)}
-                disabled={currentPage <= 1 || isLoading}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel="Previous page"
-              >
-                <Text
-                  style={[
-                    styles.paginationNavText,
-                    currentPage <= 1 && styles.paginationNavTextDisabled,
-                  ]}
-                >
-                  Prev
-                </Text>
-              </TouchableOpacity>
-
-              {visiblePages.map(page => {
-                const isActive = page === currentPage;
-                return (
-                  <TouchableOpacity
-                    key={page}
-                    style={[
-                      styles.paginationPageBtn,
-                      isActive && styles.paginationPageBtnActive,
-                    ]}
-                    onPress={() => goToPage(page)}
-                    disabled={isActive || isLoading}
-                    activeOpacity={0.85}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Page ${page}`}
-                  >
-                    <Text
-                      style={[
-                        styles.paginationPageText,
-                        isActive && styles.paginationPageTextActive,
-                      ]}
-                    >
-                      {page}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-
-              <TouchableOpacity
-                style={[
-                  styles.paginationNavBtn,
-                  currentPage >= totalPages && styles.paginationNavBtnDisabled,
-                ]}
-                onPress={() => goToPage(currentPage + 1)}
-                disabled={currentPage >= totalPages || isLoading}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel="Next page"
-              >
-                <Text
-                  style={[
-                    styles.paginationNavText,
-                    currentPage >= totalPages && styles.paginationNavTextDisabled,
-                  ]}
-                >
-                  Next
-                </Text>
-              </TouchableOpacity>
-            </View>
-          ) : null}
-        </ScrollView>
+          ListEmptyComponent={
+            !isLoading ? (
+              <View style={styles.emptyStateWrap}>
+                <Text style={styles.emptyStateText}>No reports Available</Text>
+              </View>
+            ) : null
+          }
+          ListFooterComponent={reportListFooter}
+        />
       </View>
 
       <Modal
@@ -1031,10 +1035,7 @@ const Reports: React.FC = () => {
                 setReportError('Something went wrong while opening the report.')
               }
               onOpenInBrowser={() => {
-                console.log('[report] opening in browser:', reportUrl);
-                Linking.openURL(reportUrl).catch(err =>
-                  console.log('[report] openURL failed:', err),
-                );
+                Linking.openURL(reportUrl).catch(() => {});
               }}
               onClose={closeReport}
               styles={{

@@ -133,6 +133,7 @@ const Profile: React.FC = () => {
   const [savingProfile, setSavingProfile] = useState(false);
   const [logoutModalVisible, setLogoutModalVisible] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [photoPickerVisible, setPhotoPickerVisible] = useState(false);
 
   const fetchLabProfile = useCallback(async (opts?: { isPullRefresh?: boolean }) => {
     const pull = opts?.isPullRefresh ?? false;
@@ -259,22 +260,22 @@ const Profile: React.FC = () => {
     if (uploading) {
       return;
     }
-    Alert.alert('Profile photo', 'Choose a source', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Take photo',
-        onPress: () => {
-          takePhoto().catch(() => {});
-        },
-      },
-      {
-        text: 'Choose from library',
-        onPress: () => {
-          pickFromLibrary().catch(() => {});
-        },
-      },
-    ]);
-  }, [uploading, takePhoto, pickFromLibrary]);
+    setPhotoPickerVisible(true);
+  }, [uploading]);
+
+  const closePhotoPickerModal = useCallback(() => {
+    setPhotoPickerVisible(false);
+  }, []);
+
+  const handleTakePhoto = useCallback(() => {
+    setPhotoPickerVisible(false);
+    takePhoto().catch(() => {});
+  }, [takePhoto]);
+
+  const handlePickFromLibrary = useCallback(() => {
+    setPhotoPickerVisible(false);
+    pickFromLibrary().catch(() => {});
+  }, [pickFromLibrary]);
 
   const openEditModal = useCallback(() => {
     const p = profile?.personal_info;
@@ -352,7 +353,6 @@ const Profile: React.FC = () => {
       try {
         await postAuthLogout();
       } catch (e) {
-        console.log('Server logout failed, continuing...', e);
       }
 
       // 2) Clear local session (AsyncStorage/tokens/redux/etc)
@@ -657,6 +657,19 @@ const Profile: React.FC = () => {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <CustomPopup
+        isVisible={photoPickerVisible}
+        onClose={closePhotoPickerModal}
+        onConfirm={handleTakePhoto}
+        onSecondaryConfirm={handlePickFromLibrary}
+        title="Profile photo"
+        message="Choose a source"
+        iconName="camera-outline"
+        cancelText="Cancel"
+        secondaryConfirmText="Choose from library"
+        confirmText="Take photo"
+      />
 
       <CustomPopup
         isVisible={logoutModalVisible}

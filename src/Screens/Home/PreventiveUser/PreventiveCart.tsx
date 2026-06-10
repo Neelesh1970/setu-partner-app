@@ -72,7 +72,6 @@ export default function PreventiveCart({ navigation }: any) {
         setCartFetchError(null);
         try {
             const res = await getCart();
-            console.log("CART API:", res);
 
             const data = res?.data ?? res;
 
@@ -85,7 +84,6 @@ export default function PreventiveCart({ navigation }: any) {
                 store.setItems([]);
             }
         } catch (e) {
-            console.log("Cart fetch failed:", e);
             setCartFetchError("Could not load cart. Check your connection and try again.");
             setItems([]);
             store.setItems([]);
@@ -140,7 +138,6 @@ export default function PreventiveCart({ navigation }: any) {
             await removeFromCart({ item_type, item_id });
             await fetchCart();
         } catch (e) {
-            console.log("Remove error:", e);
         } finally {
             setRemoveLoading(false);
             setShowRemovePopup(false);

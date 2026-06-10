@@ -61,7 +61,6 @@ const RegisterScreen: React.FC = () => {
         const centerList = await getCenters();
         setCenters(centerList);
       } catch (error) {
-        console.log('[RegisterScreen] centers fetch error:', error);
         Alert.alert('Error', 'Unable to load clinic list. Please try again.');
       } finally {
         setCentersLoading(false);
@@ -73,6 +72,17 @@ const RegisterScreen: React.FC = () => {
   const updateField = (field: keyof RegisterForm) => (value: string) => {
     setForm(prev => ({ ...prev, [field]: value }));
   };
+
+  const isFormComplete =
+    Boolean(form.role) &&
+    Boolean(form.serviceType) &&
+    Boolean(form.fullName) &&
+    Boolean(form.gender) &&
+    Boolean(form.age) &&
+    Boolean(form.phone) &&
+    Boolean(form.email) &&
+    Boolean(form.centerId) &&
+    form.phone.length === 10;
 
   const validate = (): boolean => {
     const { role, serviceType, fullName, gender, age, phone, email, centerId } = form;
@@ -113,12 +123,9 @@ const RegisterScreen: React.FC = () => {
         center_id: form.centerId,
       };
 
-      console.log('[RegisterScreen] send-otp payload:', JSON.stringify(payload, null, 2));
       const resp = await sendRegistrationOtp(payload);
-      console.log('[RegisterScreen] send-otp success:', JSON.stringify(resp, null, 2));
       navigation.navigate('OtpVerification', { mobile: form.phone });
     } catch (error: any) {
-      console.log('[RegisterScreen] handleContinue error:', error);
       Alert.alert('Error', error?.message ?? 'Failed to send OTP. Please try again.');
     } finally {
       setLoading(false);
@@ -361,9 +368,13 @@ const RegisterScreen: React.FC = () => {
         )}
 
           <TouchableOpacity
-            style={[styles.primaryButton, loading && styles.primaryButtonDisabled]}
+            style={[
+              styles.primaryButton,
+              !isFormComplete && styles.primaryButtonInactive,
+              loading && isFormComplete && styles.primaryButtonDisabled,
+            ]}
             onPress={handleContinue}
-            disabled={loading}
+            disabled={!isFormComplete || loading}
             activeOpacity={0.8}
           >
             {loading ? (
@@ -402,17 +413,17 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   description: {
-    fontSize: 14,
+    fontSize: 16,
     color: '#444',
     lineHeight: 20,
     marginBottom: 14,
   },
   label: {
-    fontSize: 14,
+    fontSize: 16.5,
     fontWeight: '600',
     color: '#000',
     marginBottom: 8,
-    marginTop: 14,
+    marginTop: 20,
   },
   inputContainer: {
     borderWidth: 1,
@@ -427,18 +438,18 @@ const styles = StyleSheet.create({
   textInput: {
     flex: 1,
     paddingVertical: 13,
-    fontSize: 14,
+    fontSize: 16,
     color: '#000',
   },
   inputText: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#000',
     paddingVertical: 13,
   },
   placeholderText: {
     color: '#A0A0A0',
     paddingVertical: 13,
-    fontSize: 14,
+    fontSize: 16,
   },
   dropdownIcon: {
     fontSize: 12,
@@ -511,7 +522,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1A49AB',
   },
   radioText: {
-    fontSize: 14,
+    fontSize: 16,
     color: '#000',
   },
   phoneInputRow: {
@@ -546,6 +557,9 @@ const styles = StyleSheet.create({
     padding: 16,
     alignItems: 'center',
     marginTop: 30,
+  },
+  primaryButtonInactive: {
+    backgroundColor: '#A0A0A0',
   },
   primaryButtonDisabled: {
     opacity: 0.6,

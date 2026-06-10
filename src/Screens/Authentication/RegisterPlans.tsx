@@ -23,6 +23,7 @@ import {
   confirmAutopay5,
 } from '../../Services/authService';
 import { saveRegisteredPatientAuthData, getLabUserId } from '../../Utils/storage';
+import { RAZORPAY_TEST_KEY_ID } from '../../api/apiConfig';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'RegisterPlans'>;
 type Route = RouteProp<RootStackParamList, 'RegisterPlans'>;
@@ -37,17 +38,10 @@ const RegisterPlans: React.FC = () => {
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(false);
 
-  console.log('[RegisterPlans] Route params:', { mobile, firstName, lastName, dob, gender, lab_user_id });
-
   const handleYearlyPlan = async () => {
-    console.log('==============================');
-    console.log('🚀 [FLOW START] YEARLY PLAN');
-    console.log('➡️ PARAMS:', { firstName, lastName, mobile });
-    console.log('==============================');
     setLoading(true);
     try {
       const storedLabUserId = await getLabUserId();
-      console.log('[YearlyPlan] lab_user_id from storage:', storedLabUserId);
 
       const orderRes = await createRegistrationOrder({
         firstName,
@@ -55,15 +49,10 @@ const RegisterPlans: React.FC = () => {
         phoneNumber: mobile,
       });
 
-      console.log('🟢 [STEP 3] ORDER RESPONSE RECEIVED');
-      console.log(JSON.stringify(orderRes, null, 2));
-
       const orderId = orderRes?.data?.order?.id;
-      console.log('➡️ FINAL orderId:', orderId);
       const amount = orderRes?.data?.order?.amount ?? 19900;
 
       if (!orderId) {
-        console.log('🔴 [FINAL ERROR] orderId missing');
         Alert.alert('Error', 'Failed to create order. Please try again.');
         return;
       }
@@ -71,7 +60,7 @@ const RegisterPlans: React.FC = () => {
       const options = {
         description: 'Yearly Membership Plan',
         currency: 'INR',
-        key: 'rzp_test_SJVDT02ci0WUK8', // ✅ TEST KEY
+        key: RAZORPAY_TEST_KEY_ID,
         amount: String(amount),
         order_id: orderId,
         name: 'Setu Partner App',
@@ -82,14 +71,10 @@ const RegisterPlans: React.FC = () => {
         theme: { color: '#2F3DBD' },
       };
 
-      console.log('[YearlyPlan] Razorpay options:', JSON.stringify(options, null, 2));
-
       setLoading(false);
 
       RazorpayCheckout.open(options)
         .then(async (paymentData: any) => {
-          console.log('[YearlyPlan] ✅ Razorpay payment success — starting confirm flow');
-          console.log('[YearlyPlan] paymentData:', JSON.stringify(paymentData, null, 2));
           setLoading(true);
 
           // Wrap the entire post-payment flow in its own try/catch so any error
@@ -111,10 +96,7 @@ const RegisterPlans: React.FC = () => {
               razorpay_signature: paymentData.razorpay_signature,
               lab_user_id: storedLabUserId ?? lab_user_id,
             };
-            console.log('[YearlyPlan] confirmRegistration payload:', JSON.stringify(confirmPayload, null, 2));
-
             const confirmRes = await confirmRegistration(confirmPayload);
-            console.log('[YearlyPlan] RAW confirmRes (full):', JSON.stringify(confirmRes, null, 2));
 
             // Try multiple response shapes — backend may nest differently.
             const token =
@@ -130,15 +112,16 @@ const RegisterPlans: React.FC = () => {
               (confirmRes as any)?.data?.user?.user_id ??
               (confirmRes as any)?.user?.user_id;
 
-            console.log('========== NEW USER TOKENS (created under Lab User ID) ==========');
-            console.log('Lab User ID    :', storedLabUserId ?? lab_user_id);
-            console.log('User Token     :', token ?? 'MISSING');
-            console.log('Refresh Token  :', refreshToken ?? 'MISSING');
-            console.log('User ID        :', userID ?? 'MISSING');
-            console.log('==================================================================');
+            if (__DEV__) {
+              console.log('========== NEW USER TOKENS (created under Lab User ID) ==========');
+              console.log('Lab User ID    :', storedLabUserId ?? lab_user_id);
+              console.log('User Token     :', token ?? 'MISSING');
+              console.log('Refresh Token  :', refreshToken ?? 'MISSING');
+              console.log('User ID        :', userID ?? 'MISSING');
+              console.log('==================================================================');
+            }
 
             if (!token || !userID) {
-              console.warn('[YearlyPlan] ❌ token or userID missing after confirmRegistration — check RAW confirmRes above');
               Alert.alert('Error', 'Registration confirmed but session data missing. Please try again.');
               return;
             }
@@ -146,8 +129,9 @@ const RegisterPlans: React.FC = () => {
             // Save patient tokens to patient-only keys — do NOT call saveAuthData here.
             // saveAuthData would overwrite the lab worker's AUTH_TOKEN/REFRESH_TOKEN.
             await saveRegisteredPatientAuthData(token, String(userID), refreshToken);
-            console.log('[YearlyPlan] ✅ Patient auth saved to patient-only keys (lab worker session preserved)');
-            console.log('[YearlyPlan] ✅ Calling navigation.reset → [Home, PreventiveHealth]');
+            if (__DEV__) {
+              console.log('[YearlyPlan] Patient auth saved to patient-only keys (lab worker session preserved)');
+            }
 
             navigation.reset({
               index: 1,
@@ -163,7 +147,6 @@ const RegisterPlans: React.FC = () => {
         .catch((razorpayError: any) => {
           // This catch is ONLY for Razorpay-level errors (e.g. user dismissed, network).
           // Post-payment errors are handled inside the .then() try/catch above.
-          console.log('[YearlyPlan] Razorpay catch — code:', razorpayError?.code, '| description:', razorpayError?.description);
           if (razorpayError?.code !== 0) {
             // code 0 = user dismissed, not an error
             Alert.alert('Payment Failed', razorpayError?.description ?? 'Payment could not be completed.');
@@ -179,12 +162,9 @@ const RegisterPlans: React.FC = () => {
   };
 
   const handleTrialPlan = async () => {
-    console.log('[TrialPlan] Starting trial plan flow');
-    console.log('[TrialPlan] initAutopay5 payload:', { firstName, lastName, phoneNumber: mobile, dob, gender });
     setLoading(true);
     try {
       const storedLabUserId = await getLabUserId();
-      console.log('[TrialPlan] lab_user_id from storage:', storedLabUserId);
 
       const initRes = await initAutopay5({
         firstName,
@@ -194,16 +174,11 @@ const RegisterPlans: React.FC = () => {
         gender,
       });
 
-      console.log('[TrialPlan] SUBSCRIPTION INIT RESPONSE:', JSON.stringify(initRes, null, 2));
-
       const subscriptionId = initRes?.checkoutPayload?.subscriptionId;
       const customerId = initRes?.checkoutPayload?.customerId;
       const keyId = initRes?.checkoutPayload?.keyId;
 
-      console.log('[TrialPlan] subscriptionId:', subscriptionId, '| customerId:', customerId, '| keyId:', keyId);
-
       if (!subscriptionId) {
-        console.warn('[TrialPlan] subscriptionId missing — aborting');
         Alert.alert('Error', 'Failed to create subscription.');
         setLoading(false);
         return;
@@ -212,7 +187,7 @@ const RegisterPlans: React.FC = () => {
       const options = {
         description: 'Trial Plan ₹5',
         currency: 'INR',
-        key: keyId ?? 'rzp_test_SJVDT02ci0WUK8',
+        key: keyId ?? RAZORPAY_TEST_KEY_ID,
         subscription_id: subscriptionId,
         name: 'Setu Partner App',
         prefill: {
@@ -222,14 +197,10 @@ const RegisterPlans: React.FC = () => {
         theme: { color: '#2F3DBD' },
       };
 
-      console.log('[TrialPlan] Razorpay options:', JSON.stringify(options, null, 2));
-
       setLoading(false);
 
       RazorpayCheckout.open(options)
         .then(async (paymentData: any) => {
-          console.log('[TrialPlan] ✅ Razorpay payment success — starting confirm flow');
-          console.log('[TrialPlan] paymentData:', JSON.stringify(paymentData, null, 2));
           setLoading(true);
 
           // Wrap the entire post-payment flow in its own try/catch so any error
@@ -249,10 +220,7 @@ const RegisterPlans: React.FC = () => {
               razorpay_order_id: paymentData.razorpay_order_id,
               lab_user_id: storedLabUserId ?? lab_user_id,
             };
-            console.log('[TrialPlan] confirmAutopay5 payload:', JSON.stringify(confirmPayload, null, 2));
-
             const confirmRes = await confirmAutopay5(confirmPayload);
-            console.log('[TrialPlan] RAW confirmRes (full):', JSON.stringify(confirmRes, null, 2));
 
             // Try multiple response shapes — backend may nest differently.
             const token =
@@ -268,15 +236,16 @@ const RegisterPlans: React.FC = () => {
               (confirmRes as any)?.data?.user?.user_id ??
               (confirmRes as any)?.data?.response?.user?.user_id;
 
-            console.log('========== NEW USER TOKENS (created under Lab User ID) ==========');
-            console.log('Lab User ID    :', storedLabUserId ?? lab_user_id);
-            console.log('User Token     :', token ?? 'MISSING');
-            console.log('Refresh Token  :', refreshToken ?? 'MISSING');
-            console.log('User ID        :', userID ?? 'MISSING');
-            console.log('==================================================================');
+            if (__DEV__) {
+              console.log('========== NEW USER TOKENS (created under Lab User ID) ==========');
+              console.log('Lab User ID    :', storedLabUserId ?? lab_user_id);
+              console.log('User Token     :', token ?? 'MISSING');
+              console.log('Refresh Token  :', refreshToken ?? 'MISSING');
+              console.log('User ID        :', userID ?? 'MISSING');
+              console.log('==================================================================');
+            }
 
             if (!token || !userID) {
-              console.warn('[TrialPlan] ❌ token or userID missing after confirmAutopay5 — check RAW confirmRes above');
               Alert.alert('Error', 'Registration confirmed but session data missing. Please try again.');
               return;
             }
@@ -284,8 +253,9 @@ const RegisterPlans: React.FC = () => {
             // Save patient tokens to patient-only keys — do NOT call saveAuthData here.
             // saveAuthData would overwrite the lab worker's AUTH_TOKEN/REFRESH_TOKEN.
             await saveRegisteredPatientAuthData(token, String(userID), refreshToken);
-            console.log('[TrialPlan] ✅ Patient auth saved to patient-only keys (lab worker session preserved)');
-            console.log('[TrialPlan] ✅ Calling navigation.reset → [Home, PreventiveHealth]');
+            if (__DEV__) {
+              console.log('[TrialPlan] Patient auth saved to patient-only keys (lab worker session preserved)');
+            }
 
             navigation.reset({
               index: 1,
@@ -300,7 +270,6 @@ const RegisterPlans: React.FC = () => {
         })
         .catch((razorpayError: any) => {
           // This catch is ONLY for Razorpay-level errors (e.g. user dismissed, network).
-          console.log('[TrialPlan] Razorpay catch — code:', razorpayError?.code, '| description:', razorpayError?.description);
           if (razorpayError?.code !== 0) {
             Alert.alert('Payment Failed', razorpayError?.description ?? 'Payment could not be completed.');
           }

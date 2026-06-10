@@ -6,7 +6,6 @@ import {
   StyleSheet,
   StatusBar,
   Dimensions,
-  Image,
   TouchableOpacity,
   Platform,
   BackHandler,
@@ -17,6 +16,7 @@ import { ms, s, vs } from "react-native-size-matters";
 import PreventiveHealthHeader from "./PreventiveHealthHeader";
 import AppSkeleton from "../Components/AppSkeleton";
 import { FlatList } from "react-native";
+import RemoteImage from "../../../Components/RemoteImage/RemoteImage";
 import { useFocusEffect } from "@react-navigation/native";
 
 import { getDevices, getCart } from "./PreventiveHealthAPI";
@@ -45,7 +45,6 @@ const HealthCheckupDevices = ({ navigation }: any) => {
       setDevices(deviceRes || []);
       setCart(cartRes || null);
     } catch (e) {
-      console.log("API error", e);
     } finally {
       setLoading(false);
     }
@@ -132,7 +131,7 @@ const HealthCheckupDevices = ({ navigation }: any) => {
             >
               <View style={styles.imageWrapper}>
                 {item.image_url ? (
-                  <Image
+                  <RemoteImage
                     source={{ uri: item.image_url }}
                     style={styles.tileImage}
                   />

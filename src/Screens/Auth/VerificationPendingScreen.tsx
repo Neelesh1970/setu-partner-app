@@ -65,7 +65,6 @@ const VerificationPendingScreen: React.FC = () => {
       }
       // If still PENDING or any other status, stay on this screen.
     } catch (e) {
-      console.log('[VerificationPendingScreen] status-check error:', e);
     } finally {
       setChecking(false);
     }

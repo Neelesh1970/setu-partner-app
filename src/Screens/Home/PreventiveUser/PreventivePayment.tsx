@@ -153,7 +153,6 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
         const u = await getUser<{ mobile?: string; phone?: string; email?: string }>();
         userRef.current = u;
       } catch (e) {
-        console.log("[PreventivePayment] load user error", e);
       }
     }
     void loadUser();
@@ -188,20 +187,12 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
       Alert.alert("Payment", "Missing booking.");
       return;
     }
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    console.log("[PAY][UPI] 🚀 Pay Now pressed");
-    console.log("[PAY][UPI]    bookingId     :", bookingId);
-    console.log("[PAY][UPI]    amountPayable :", amountPayable);
-    console.log("[PAY][UPI]    paymentMode   : upi");
     setPaying(true);
     try {
       // ── Step 1: create Razorpay order ──────────────────────────
-      console.log("[PAY][UPI] ── Step 1: calling payUpi() ──────────────────");
       const orderRes = await payUpi(bookingId);
-      console.log("[PAY][UPI] payUpi raw response :", JSON.stringify(orderRes, null, 2));
 
       const order = extractUpiOrderFromResponse(orderRes);
-      console.log("[PAY][UPI] extracted order :", JSON.stringify(order, null, 2));
 
       if (!order) {
         console.warn("[PAY][UPI] ❌ extractUpiOrderFromResponse returned null");
@@ -232,14 +223,10 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
         },
         theme: { color: COLORS.headerBg },
       };
-      console.log("[PAY][UPI] ── Step 2: opening RazorpayCheckout ────────────");
-      console.log("[PAY][UPI] RazorpayCheckout.open options :", JSON.stringify(razorpayOptions, null, 2));
 
       const sdkData = await RazorpayCheckout.open(razorpayOptions);
-      console.log("[PAY][UPI] RazorpayCheckout.open success :", JSON.stringify(sdkData, null, 2));
 
       const payload = extractSdkPaymentIds(sdkData as Record<string, unknown>);
-      console.log("[PAY][UPI] extracted payment payload :", JSON.stringify(payload, null, 2));
 
       if (!payload) {
         console.warn("[PAY][UPI] ❌ extractSdkPaymentIds returned null — sdkData was :", JSON.stringify(sdkData, null, 2));
@@ -248,10 +235,7 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
       }
 
       // ── Step 3: verify on backend ──────────────────────────────
-      console.log("[PAY][UPI] ── Step 3: calling verifyRazorpay() ──────────");
-      console.log("[PAY][UPI] verify payload :", JSON.stringify(payload, null, 2));
       const verifyRes = await verifyRazorpay(bookingId, payload);
-      console.log("[PAY][UPI] verifyRazorpay response :", JSON.stringify(verifyRes, null, 2));
 
       if (verifyRes?.success !== true) {
         console.warn("[PAY][UPI] ❌ verification failed — response :", JSON.stringify(verifyRes, null, 2));
@@ -259,11 +243,9 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
         return;
       }
 
-      console.log("[PAY][UPI] ✅ payment verified — navigating to PreventiveBookingSummary");
       navigation.replace("PreventiveBookingSummary", { bookingId });
     } catch (e: unknown) {
       if (isRazorpayUserCancelled(e)) {
-        console.log("[PAY][UPI] ℹ️  Razorpay cancelled by user :", JSON.stringify(e, null, 2));
         Alert.alert("Payment", "Payment cancelled.");
         return;
       }
@@ -290,7 +272,6 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
       Alert.alert("Payment", msg);
     } finally {
       setPaying(false);
-      console.log("[PAY][UPI] ── finally: setPaying(false) ─────────────────");
     }
   }, [bookingId, amountPayable, navigation]);
 
@@ -302,23 +283,15 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
       Alert.alert("Payment", "Missing booking.");
       return;
     }
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    console.log("[PAY][CASH] 🚀 Pay Now pressed");
-    console.log("[PAY][CASH]    bookingId     :", bookingId);
-    console.log("[PAY][CASH]    amountPayable :", amountPayable);
-    console.log("[PAY][CASH]    cashConfirmed :", cashConfirmed);
     setPaying(true);
     try {
-      console.log("[PAY][CASH] ── calling payCash() ────────────────────────");
       const res = await payCash(bookingId);
-      console.log("[PAY][CASH] payCash raw response :", JSON.stringify(res, null, 2));
 
       if (res?.success !== true) {
         console.warn("[PAY][CASH] ❌ success !== true — message :", res?.message);
         Alert.alert("Payment", res?.message ?? "Cash payment could not be recorded.");
         return;
       }
-      console.log("[PAY][CASH] ✅ cash registered — setCashConfirmed(true)");
       setCashConfirmed(true);
     } catch (e: unknown) {
       const axiosErr = e as {
@@ -340,7 +313,6 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
       Alert.alert("Payment", axiosErr?.message ?? "Failed to confirm cash payment");
     } finally {
       setPaying(false);
-      console.log("[PAY][CASH] ── finally: setPaying(false) ────────────────");
     }
   }, [bookingId, amountPayable, cashConfirmed]);
 
@@ -348,10 +320,8 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
 
   const handlePayNow = useCallback(async (): Promise<void> => {
     if (paying) {
-      console.log("[PAY] handlePayNow: already paying — ignoring tap");
       return;
     }
-    console.log("[PAY] handlePayNow: paymentMode =", paymentMode, "| cashConfirmed =", cashConfirmed);
     if (paymentMode === "upi") {
       await handleUpiPayment();
     } else if (cashConfirmed) {
@@ -361,7 +331,6 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
         Alert.alert("Payment", "Missing booking.");
         return;
       }
-      console.log("[PAY][CASH] 2nd tap — navigating to PreventiveBookingSummary");
       navigation.replace("PreventiveBookingSummary", { bookingId });
     } else {
       // First tap — register cash with API

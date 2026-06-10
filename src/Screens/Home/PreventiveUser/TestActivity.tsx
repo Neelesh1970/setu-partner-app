@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FlashList } from '@shopify/flash-list';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   StatusBar,
   Platform,
@@ -533,6 +533,122 @@ const TestActivity: React.FC = () => {
     [navigation.navigate],
   );
 
+  type ActivityListItem =
+    | { kind: 'completed'; patient: LabPatientRecord; key: string }
+    | { kind: 'upcoming'; patient: LabPatientRecord; key: string }
+    | { kind: 'missed'; section: { ymd: string; items: LabPatientRecord[] }; key: string };
+
+  const activityListData = useMemo((): ActivityListItem[] => {
+    if (loading || listIsEmpty) {
+      return [];
+    }
+    if (isCompletedTab) {
+      return displayPatients.map((p, index) => ({
+        kind: 'completed' as const,
+        patient: p,
+        key: `${p.id ?? p.user_id ?? 'c'}-${index}`,
+      }));
+    }
+    if (activeTab === 'missed') {
+      return missedSections.map((section, sIdx) => ({
+        kind: 'missed' as const,
+        section,
+        key: section.ymd || `unknown-${sIdx}`,
+      }));
+    }
+    return displayPatients.map((p, index) => ({
+      kind: 'upcoming' as const,
+      patient: p,
+      key: `${p.id ?? p.user_id ?? 'u'}-${index}`,
+    }));
+  }, [
+    loading,
+    listIsEmpty,
+    isCompletedTab,
+    activeTab,
+    displayPatients,
+    missedSections,
+  ]);
+
+  const renderActivityItem = useCallback(
+    ({ item, index }: { item: ActivityListItem; index: number }) => {
+      if (item.kind === 'completed') {
+        const p = item.patient;
+        return (
+          <CompletedTestCard
+            patientName={(p.full_name ?? '').trim() || '—'}
+            patientId={String(p.user_id ?? p.id ?? '')}
+            testName={labPatientTestLabel(p)}
+            location={labPatientLocationLabel(p)}
+            onSeeDetails={() => goTestDetails(p)}
+            onViewReport={() => openReportByBookingId(p.booking_id)}
+          />
+        );
+      }
+      if (item.kind === 'missed') {
+        const section = item.section;
+        return (
+          <View style={index > 0 ? styles.missedDateBlock : null}>
+            <Text style={styles.missedDateLabel} numberOfLines={1}>
+              {section.ymd || '—'}
+            </Text>
+            {section.items.map((p, pIndex) => (
+              <UpcomingStyleTestCard
+                key={`${p.id ?? p.user_id ?? 'm'}-${section.ymd}-${pIndex}`}
+                patientName={(p.full_name ?? '').trim() || '—'}
+                patientId={String(p.user_id ?? p.id ?? '')}
+                testName={labPatientTestLabel(p)}
+                time={formatLabSlotRange(p.slot_start_time, p.slot_end_time)}
+                paymentStatus={p.payment_status ?? 'pending'}
+                paymentMethod={p.payment_method ?? ''}
+                onSeeDetails={() => goTestDetails(p)}
+                onPerformTest={() => handlePerformTest(p)}
+                performDisabled={false}
+              />
+            ))}
+          </View>
+        );
+      }
+      const p = item.patient;
+      return (
+        <UpcomingStyleTestCard
+          patientName={(p.full_name ?? '').trim() || '—'}
+          patientId={String(p.user_id ?? p.id ?? '')}
+          testName={labPatientTestLabel(p)}
+          time={formatLabSlotRange(p.slot_start_time, p.slot_end_time)}
+          paymentStatus={p.payment_status ?? 'pending'}
+          paymentMethod={p.payment_method ?? ''}
+          onSeeDetails={() => goTestDetails(p)}
+          onPerformTest={() => handlePerformTest(p)}
+          performDisabled={!canPerformTestNow(p)}
+        />
+      );
+    },
+    [
+      canPerformTestNow,
+      goTestDetails,
+      handlePerformTest,
+      openReportByBookingId,
+    ],
+  );
+
+  const activityListEmpty = useMemo(() => {
+    if (loading) {
+      return (
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={PRIMARY} size="large" />
+        </View>
+      );
+    }
+    if (listIsEmpty) {
+      return (
+        <View style={styles.emptyWrap}>
+          <Text style={styles.emptyText}>{HOME_NO_TESTS_COPY}</Text>
+        </View>
+      );
+    }
+    return null;
+  }, [loading, listIsEmpty]);
 
   return (
     <>
@@ -561,7 +677,10 @@ const TestActivity: React.FC = () => {
         <View style={styles.body}>
           <ActivityTabBar activeTab={activeTab} onChange={setActiveTab} />
 
-          <ScrollView
+          <FlashList
+            data={activityListData}
+            renderItem={renderActivityItem}
+            keyExtractor={item => item.key}
             style={styles.scroll}
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
@@ -574,73 +693,8 @@ const TestActivity: React.FC = () => {
                 tintColor={COLORS.PRIMARY}
               />
             }
-          >
-            {loading ? (
-              <View style={styles.loadingWrap}>
-                <ActivityIndicator color={PRIMARY} size="large" />
-              </View>
-            ) : listIsEmpty ? (
-              <View style={styles.emptyWrap}>
-                <Text style={styles.emptyText}>{HOME_NO_TESTS_COPY}</Text>
-              </View>
-            ) : isCompletedTab ? (
-              displayPatients.map((p, index) => (
-                <CompletedTestCard
-                  key={`${p.id ?? p.user_id ?? 'c'}-${index}`}
-                  patientName={(p.full_name ?? '').trim() || '—'}
-                  patientId={String(p.user_id ?? p.id ?? '')}
-                  testName={labPatientTestLabel(p)}
-                  location={labPatientLocationLabel(p)}
-                  onSeeDetails={() => goTestDetails(p)}
-                  onViewReport={() => openReportByBookingId(p.booking_id)}
-                />
-              ))
-            ) : activeTab === 'missed' ? (
-              missedSections.map((section, sIdx) => (
-                <View
-                  key={section.ymd || 'unknown'}
-                  style={sIdx > 0 ? styles.missedDateBlock : null}
-                >
-                  <Text style={styles.missedDateLabel} numberOfLines={1}>
-                    {section.ymd || '—'}
-                  </Text>
-                  {section.items.map((p, index) => (
-                    <UpcomingStyleTestCard
-                      key={`${p.id ?? p.user_id ?? 'm'}-${section.ymd}-${index}`}
-                      patientName={(p.full_name ?? '').trim() || '—'}
-                      patientId={String(p.user_id ?? p.id ?? '')}
-                      testName={labPatientTestLabel(p)}
-                      time={formatLabSlotRange(p.slot_start_time, p.slot_end_time)}
-                      paymentStatus={p.payment_status ?? 'pending'}
-                      paymentMethod={p.payment_method ?? ''}
-                      onSeeDetails={() => goTestDetails(p)}
-                      onPerformTest={() => handlePerformTest(p)}
-                      performDisabled={false}
-                    />
-                  ))}
-                </View>
-              ))
-            ) : (
-              displayPatients.map((p, index) => (
-                <UpcomingStyleTestCard
-                  key={`${p.id ?? p.user_id ?? 'u'}-${index}`}
-                  patientName={(p.full_name ?? '').trim() || '—'}
-                  patientId={String(p.user_id ?? p.id ?? '')}
-                  testName={labPatientTestLabel(p)}
-                  time={formatLabSlotRange(p.slot_start_time, p.slot_end_time)}
-                  paymentStatus={p.payment_status ?? 'pending'}
-                  paymentMethod={p.payment_method ?? ''}
-                  onSeeDetails={() => goTestDetails(p)}
-                  onPerformTest={() => handlePerformTest(p)}
-                  performDisabled={
-                    // Enable only when current time is within the slot window (today),
-                    // and backend hasn't explicitly blocked it.
-                    !canPerformTestNow(p)
-                  }
-                />
-              ))
-            )}
-          </ScrollView>
+            ListEmptyComponent={activityListEmpty}
+          />
         </View>
       </View>
 

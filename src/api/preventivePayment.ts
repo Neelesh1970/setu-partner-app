@@ -21,8 +21,10 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
     getRegisteredPatientAuthToken(),
     getRegisteredPatientRefreshToken(),
   ]);
-  console.log("[API][AUTH] patient access_token  :", maskToken(accessToken));
-  console.log("[API][AUTH] patient refresh_token :", maskToken(refreshToken));
+  if (__DEV__) {
+    console.log("[API][AUTH] patient access_token  :", maskToken(accessToken));
+    console.log("[API][AUTH] patient refresh_token :", maskToken(refreshToken));
+  }
   return {
     Authorization: `Bearer ${accessToken ?? ""}`,
     "x-refresh-token": refreshToken ?? "",
@@ -65,10 +67,8 @@ export type PayUpiApiResponse = {
 export async function payUpi(bookingId: string): Promise<PayUpiApiResponse> {
   const headers = await getAuthHeaders();
   const url = `/bookings/${encodeURIComponent(bookingId)}/pay/upi`;
-  console.log(`[API][PAY-UPI] POST ${BASE_URL}${url}`);
   try {
     const res = await api.post(url, {}, { headers });
-    console.log(`[API][PAY-UPI] ✅ HTTP ${res.status} —`, JSON.stringify(res.data, null, 2));
     return res.data as PayUpiApiResponse;
   } catch (e) {
     logAxiosError("PAY-UPI", e);
@@ -95,11 +95,8 @@ export async function verifyRazorpay(
 ): Promise<VerifyRazorpayApiResponse> {
   const headers = await getAuthHeaders();
   const url = `/bookings/${encodeURIComponent(bookingId)}/razorpay/verify`;
-  console.log(`[API][VERIFY] POST ${BASE_URL}${url}`);
-  console.log(`[API][VERIFY] body :`, JSON.stringify(payload, null, 2));
   try {
     const res = await api.post(url, payload, { headers });
-    console.log(`[API][VERIFY] ✅ HTTP ${res.status} —`, JSON.stringify(res.data, null, 2));
     return res.data as VerifyRazorpayApiResponse;
   } catch (e) {
     logAxiosError("VERIFY", e);
@@ -117,10 +114,8 @@ export type PayCashApiResponse = {
 export async function payCash(bookingId: string): Promise<PayCashApiResponse> {
   const headers = await getAuthHeaders();
   const url = `/bookings/${encodeURIComponent(bookingId)}/pay/cash`;
-  console.log(`[API][PAY-CASH] POST ${BASE_URL}${url}`);
   try {
     const res = await api.post(url, {}, { headers });
-    console.log(`[API][PAY-CASH] ✅ HTTP ${res.status} —`, JSON.stringify(res.data, null, 2));
     return res.data as PayCashApiResponse;
   } catch (e) {
     logAxiosError("PAY-CASH", e);
@@ -144,10 +139,8 @@ export async function getBooking(
 ): Promise<BookingDetailApiResponse> {
   const headers = await getAuthHeaders();
   const url = `/bookings/${encodeURIComponent(bookingId)}`;
-  console.log(`[API][GET-BOOKING] GET ${BASE_URL}${url}`);
   try {
     const res = await api.get(url, { headers });
-    console.log(`[API][GET-BOOKING] ✅ HTTP ${res.status} —`, JSON.stringify(res.data, null, 2));
     return res.data as BookingDetailApiResponse;
   } catch (e) {
     logAxiosError("GET-BOOKING", e);

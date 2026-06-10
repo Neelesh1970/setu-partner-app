@@ -284,7 +284,6 @@ export default function PreventiveBookingDetail({ navigation }: any) {
         const data = await getSlots({ centerId: cid, date: selectedDateId });
         setRawSlotPayload(data);
       } catch (e) {
-        console.log("getSlots error", e);
         setRawSlotPayload(null);
       } finally {
         setSlotsLoading(false);
@@ -333,7 +332,6 @@ export default function PreventiveBookingDetail({ navigation }: any) {
   > => {
     const appUserId = await getUserID();
     if (!appUserId) {
-      console.log("[PreventiveBookingDetail] Missing user id (verify user.id) in storage");
       return null;
     }
 
@@ -346,31 +344,20 @@ export default function PreventiveBookingDetail({ navigation }: any) {
       try {
         const list = await getPatients();
         if (!list.length) {
-          console.log(
-            "[PreventiveBookingDetail] No patients from API; cannot resolve patient UUID"
-          );
           return null;
         }
         const match = list.find((p) => String(p?.user_id) === String(appUserId));
         const row = match ?? (list.length === 1 ? list[0] : null);
         if (!row?.id) {
-          console.log("[PreventiveBookingDetail] No patient row for this user");
           return null;
         }
         pid = String(row.id);
         await savePreventivePatientId(pid);
       } catch (e) {
-        console.log("[PreventiveBookingDetail] getPatients error", e);
         return null;
       }
     }
 
-    console.log(
-      "[PreventiveBookingDetail] user id (verify user.id):",
-      String(appUserId),
-      "| patient_id (UUID from /patients):",
-      pid
-    );
     return pid;
   }, []);
 
@@ -379,25 +366,20 @@ export default function PreventiveBookingDetail({ navigation }: any) {
       const patientId = await resolvePreventivePatientUuid();
 
       if (!patientId) {
-        console.log("Missing patient_id (UUID) for booking");
         return;
       }
       if (!centerId) {
-        console.log("Missing center id in storage");
         return;
       }
       if (!selectedDateId) {
-        console.log("Missing selectedDateId");
         return;
       }
       if (!selectedSlotId) {
-        console.log("Missing selectedSlotId");
         return;
       }
 
       const chosen = slots.find((s) => s.id === selectedSlotId);
       if (!chosen || chosen.disabled) {
-        console.log("Selected slot is full or invalid; pick another time.");
         return;
       }
 
@@ -410,7 +392,6 @@ export default function PreventiveBookingDetail({ navigation }: any) {
         center_id: String(centerId),
       };
 
-      console.log("Booking payload", payload);
 
       setSubmitting(true);
       try {
@@ -434,20 +415,17 @@ export default function PreventiveBookingDetail({ navigation }: any) {
           String(selectedDateId),
           String(selectedSlotId),
         );
-        console.log("[PreventiveBookingDetail] booking id:", bookingId);
         navigation.navigate("PreventiveCheckout", { bookingId });
       } catch (e: unknown) {
         const msg =
           e && typeof e === "object" && "message" in e
             ? String((e as Error).message)
             : "Booking failed";
-        console.log("createPreventiveBooking error", e);
         Alert.alert("Booking", msg);
       } finally {
         setSubmitting(false);
       }
     } catch (e) {
-      console.log("Continue booking error", e);
     }
   }, [centerId, navigation, resolvePreventivePatientUuid, selectedDateId, selectedSlotId, slots]);
 

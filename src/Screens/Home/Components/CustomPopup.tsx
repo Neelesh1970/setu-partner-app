@@ -22,6 +22,8 @@ interface CustomPopupProps {
   showIcon?: boolean;
   confirmText?: string;
   cancelText?: string;
+  secondaryConfirmText?: string;
+  onSecondaryConfirm?: () => void;
 }
 
 const ICON_COLOR = COLORS.PRIMARY;
@@ -48,6 +50,8 @@ const CustomPopup: React.FC<CustomPopupProps> = ({
   showIcon = true,
   confirmText = "OK",
   cancelText,
+  secondaryConfirmText,
+  onSecondaryConfirm,
 }) => {
   return (
     <Modal
@@ -84,6 +88,15 @@ const CustomPopup: React.FC<CustomPopupProps> = ({
             {cancelText ? (
               <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
                 <Text style={styles.cancelText}>{cancelText}</Text>
+              </TouchableOpacity>
+            ) : null}
+
+            {secondaryConfirmText && onSecondaryConfirm ? (
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={onSecondaryConfirm}
+              >
+                <Text style={styles.cancelText}>{secondaryConfirmText}</Text>
               </TouchableOpacity>
             ) : null}
 

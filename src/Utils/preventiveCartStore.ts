@@ -1,75 +1,75 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { store } from '../store';
+import {
+  addCartItem,
+  removeCartItem,
+  setCartItems,
+  type CartItem,
+} from '../features/cart/cartSlice';
 
-export const CART_STORAGE_KEY = "preventive_cart_items_v1";
+export const CART_STORAGE_KEY = 'preventive_cart_items_v1';
 
 interface CartState {
-  items: any[];
+  items: CartItem[];
 }
 
 interface CartStore {
   getState: () => CartState;
   subscribe: (fn: (s: CartState) => void) => () => void;
-  setItems: (items: any[]) => void;
-  addItem: (item: any) => void;
+  setItems: (items: CartItem[]) => void;
+  addItem: (item: CartItem) => void;
   removeItem: (id: string) => void;
 }
 
+let hydrated = false;
+
+function hydrateOnce() {
+  if (hydrated) {
+    return;
+  }
+  hydrated = true;
+  AsyncStorage.getItem(CART_STORAGE_KEY)
+    .then(raw => {
+      if (raw) {
+        const items = JSON.parse(raw) as CartItem[];
+        store.dispatch(setCartItems(items));
+      }
+    })
+    .catch(() => {});
+}
+
 export function getPreventiveCartStore(): CartStore {
-  const g = globalThis as any;
+  hydrateOnce();
 
-  if (g.__preventiveCart?.getState) return g.__preventiveCart as CartStore;
-
-  let state: CartState = { items: [] };
-  const listeners = new Set<(s: CartState) => void>();
-
-  const emit = () => {
-    listeners.forEach((fn) => fn(state));
-  };
-
-  const persist = (items: any[]) => {
-    AsyncStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items)).catch(() => {});
-  };
-
-  const store: CartStore = {
-    getState: () => state,
+  return {
+    getState: () => ({ items: store.getState().cart.items }),
 
     subscribe: (fn: (s: CartState) => void) => {
-      listeners.add(fn);
-      return () => listeners.delete(fn);
+      let prev = store.getState().cart.items;
+      return store.subscribe(() => {
+        const next = store.getState().cart.items;
+        if (next !== prev) {
+          prev = next;
+          fn({ items: next });
+        }
+      });
     },
 
-    setItems: (items: any[]) => {
-      state = { items: items || [] };
-      emit();
-      persist(state.items);
+    setItems: (items: CartItem[]) => {
+      store.dispatch(setCartItems(items ?? []));
+      AsyncStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items ?? [])).catch(() => {});
     },
 
-    addItem: (item: any) => {
-      const exists = state.items.find((x) => x.id === item.id);
-      if (exists) return;
-
-      const next = [...state.items, item];
-      state = { items: next };
-      emit();
-      persist(next);
+    addItem: (item: CartItem) => {
+      store.dispatch(addCartItem(item));
+      const next = store.getState().cart.items;
+      AsyncStorage.setItem(CART_STORAGE_KEY, JSON.stringify(next)).catch(() => {});
     },
 
     removeItem: (id: string) => {
-      const next = state.items.filter((x) => x.id !== id);
-      state = { items: next };
-      emit();
-      persist(next);
+      store.dispatch(removeCartItem(id));
+      const next = store.getState().cart.items;
+      AsyncStorage.setItem(CART_STORAGE_KEY, JSON.stringify(next)).catch(() => {});
     },
   };
-
-  g.__preventiveCart = store;
-
-  // Hydrate from AsyncStorage once on first access
-  AsyncStorage.getItem(CART_STORAGE_KEY)
-    .then((raw) => {
-      if (raw) store.setItems(JSON.parse(raw));
-    })
-    .catch(() => {});
-
-  return store;
 }

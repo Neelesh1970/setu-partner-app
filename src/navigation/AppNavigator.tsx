@@ -25,7 +25,16 @@ import RegisterVerifyOtp from '../Screens/Authentication/RegisterVerifyOtp';
 import RegisterName from '../Screens/Authentication/RegisterName';
 import RegisterDob from '../Screens/Authentication/RegisterDob';
 import RegisterGender from '../Screens/Authentication/RegisterGender';
-import RegisterPlans from '../Screens/Authentication/RegisterPlans';
+import {
+  LazyBloodPressure,
+  LazyOxymeter,
+  LazyPreventivePayment,
+  LazyRegisterPlans,
+  LazyRemidioQRScanner,
+  LazyReports,
+  LazyScaleDevice,
+  LazyTestActivity,
+} from './lazyScreens';
 import DashboardScreen from '../Screens/Authentication/DashboardScreen';
 import PreventiveHealth from '../Screens/Home/PreventiveUser/PreventiveHealth';
 import PreventiveHealthHeader from '../Screens/Home/PreventiveUser/PreventiveHealthHeader';
@@ -37,16 +46,9 @@ import HealthPackageOverview from '../Screens/Home/PreventiveUser/HealthPackageO
 import PreventiveCart from '../Screens/Home/PreventiveUser/PreventiveCart';
 import PreventiveBookingDetail from '../Screens/Home/PreventiveUser/PreventiveBookingDetail';
 import PreventiveCheckout from '../Screens/Home/PreventiveUser/PreventiveCheckout';
-import PreventivePayment from '../Screens/Home/PreventiveUser/PreventivePayment';
 import PreventiveBookingSummary from '../Screens/Home/PreventiveUser/PreventiveBookingSummary';
-import TestActivity from '../Screens/Home/PreventiveUser/TestActivity';
 import TestDetails from '../Screens/Home/PreventiveUser/TestDetails';
-import Reports from '../Screens/Home/PreventiveUser/Reports';
 import CashPaymentReceive from '../Screens/Home/PreventiveUser/CashPaymentReceive';
-import Oxymeter from '../Screens/IOT/Oxymeter';
-import ScaleDeviceScreen from '../Screens/IOT/ScaleDevice';
-import RemidioQRScanner from '../Screens/IOT/RemidioQRScanner';
-import BloodPressure from '../Screens/IOT/BloodPressure';
 import DeviceSelectScreen from '../Screens/Home/PreventiveUser/DeviceSelectScreen';
 import { COLORS } from '../Constants/theme';
 import { getAuthToken, getUser, getUserID } from '../Utils/storage';
@@ -149,7 +151,7 @@ const AppNavigator: React.FC = () => {
         <Stack.Screen name="RegisterName" component={RegisterName} />
         <Stack.Screen name="RegisterDob" component={RegisterDob} />
         <Stack.Screen name="RegisterGender" component={RegisterGender} />
-        <Stack.Screen name="RegisterPlans" component={RegisterPlans} />
+        <Stack.Screen name="RegisterPlans" component={LazyRegisterPlans} />
         <Stack.Screen name="Dashboard" component={DashboardScreen} />
         <Stack.Screen name="PreventiveHealth" component={PreventiveHealth} />
         <Stack.Screen name="PreventiveHealthHeader" component={PreventiveHealthHeader} />
@@ -161,23 +163,23 @@ const AppNavigator: React.FC = () => {
         <Stack.Screen name="PreventiveCart" component={PreventiveCart} />
         <Stack.Screen name="PreventiveBookingDetail" component={PreventiveBookingDetail} />
         <Stack.Screen name="PreventiveCheckout" component={PreventiveCheckout} />
-        <Stack.Screen name="PreventivePayment" component={PreventivePayment} />
+        <Stack.Screen name="PreventivePayment" component={LazyPreventivePayment} />
         <Stack.Screen name="PreventiveBookingSummary" component={PreventiveBookingSummary} />
-        <Stack.Screen name="TestActivity" component={TestActivity} />
+        <Stack.Screen name="TestActivity" component={LazyTestActivity} />
         <Stack.Screen name="TestDetails" component={TestDetails} />
-        <Stack.Screen name="Reports" component={Reports} />
+        <Stack.Screen name="Reports" component={LazyReports} />
         <Stack.Screen name="CashPaymentReceive" component={CashPaymentReceive} />
         <Stack.Screen
           name="Oxymeter"
-          component={Oxymeter}
+          component={LazyOxymeter}
           options={{
             statusBarStyle: 'light',
             statusBarBackgroundColor: COLORS.PRIMARY,
           }}
         />
-        <Stack.Screen name="ScaleDevice" component={ScaleDeviceScreen} />
-        <Stack.Screen name="RemidioQRScanner" component={RemidioQRScanner} />
-        <Stack.Screen name="BloodPressure" component={BloodPressure} />
+        <Stack.Screen name="ScaleDevice" component={LazyScaleDevice} />
+        <Stack.Screen name="RemidioQRScanner" component={LazyRemidioQRScanner} />
+        <Stack.Screen name="BloodPressure" component={LazyBloodPressure} />
         <Stack.Screen name="DeviceSelect" component={DeviceSelectScreen} />
       </Stack.Navigator>
     </NavigationContainer>

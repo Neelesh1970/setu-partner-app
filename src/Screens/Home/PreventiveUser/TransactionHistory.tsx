@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { FlashList } from '@shopify/flash-list';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   ActivityIndicator,
   StatusBar,
   RefreshControl,
@@ -230,6 +230,121 @@ const TransactionHistory: React.FC = () => {
 
   const visiblePages = getVisiblePageNumbers(currentPage, totalPages);
 
+  const sectionListData = useMemo(
+    () => sections.map((section, sidx) => ({ section, key: `${section.title}-${sidx}` })),
+    [sections],
+  );
+
+  const renderSection = useCallback(
+    ({ item }: { item: { section: TxSection; key: string } }) => (
+      <View style={styles.sectionBlock}>
+        <View style={styles.monthHeader}>
+          <View style={styles.monthLine} />
+          <Text style={styles.monthText}>{item.section.title}</Text>
+          <View style={styles.monthLine} />
+        </View>
+        <View style={styles.txCard}>
+          {item.section.data.map((tx, index) => (
+            <View key={`${tx.title}-${tx.subtitle}-${index}`}>
+              {index > 0 ? <View style={styles.txDivider} /> : null}
+              <View style={styles.txRow}>
+                <View style={styles.txLeft}>
+                  <Text style={styles.txTitle} numberOfLines={2}>
+                    {tx.title}
+                  </Text>
+                  <Text style={styles.txSub}>{tx.subtitle || '—'}</Text>
+                </View>
+                <Text
+                  style={[styles.txAmount, tx.positive ? styles.txCredit : styles.txDebit]}
+                >
+                  {tx.amount}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      </View>
+    ),
+    [],
+  );
+
+  const listFooter = useMemo(
+    () =>
+      totalPages > 1 ? (
+        <View style={styles.paginationRow}>
+          <TouchableOpacity
+            style={[
+              styles.paginationNavBtn,
+              currentPage <= 1 && styles.paginationNavBtnDisabled,
+            ]}
+            onPress={() => goToPage(currentPage - 1)}
+            disabled={currentPage <= 1 || loading}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Previous page"
+          >
+            <Text
+              style={[
+                styles.paginationNavText,
+                currentPage <= 1 && styles.paginationNavTextDisabled,
+              ]}
+            >
+              Prev
+            </Text>
+          </TouchableOpacity>
+
+          {visiblePages.map(page => {
+            const isActive = page === currentPage;
+            return (
+              <TouchableOpacity
+                key={page}
+                style={[
+                  styles.paginationPageBtn,
+                  isActive && styles.paginationPageBtnActive,
+                ]}
+                onPress={() => goToPage(page)}
+                disabled={isActive || loading}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={`Page ${page}`}
+              >
+                <Text
+                  style={[
+                    styles.paginationPageText,
+                    isActive && styles.paginationPageTextActive,
+                  ]}
+                >
+                  {page}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+
+          <TouchableOpacity
+            style={[
+              styles.paginationNavBtn,
+              currentPage >= totalPages && styles.paginationNavBtnDisabled,
+            ]}
+            onPress={() => goToPage(currentPage + 1)}
+            disabled={currentPage >= totalPages || loading}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Next page"
+          >
+            <Text
+              style={[
+                styles.paginationNavText,
+                currentPage >= totalPages && styles.paginationNavTextDisabled,
+              ]}
+            >
+              Next
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : null,
+    [totalPages, currentPage, loading, visiblePages, goToPage],
+  );
+
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={PRIMARY} />
@@ -252,7 +367,10 @@ const TransactionHistory: React.FC = () => {
           <Text style={styles.errorText}>{error}</Text>
         </View>
       ) : (
-        <ScrollView
+        <FlashList
+          data={sectionListData}
+          renderItem={renderSection}
+          keyExtractor={item => item.key}
           style={styles.scroll}
           contentContainerStyle={[
             styles.listContent,
@@ -268,116 +386,13 @@ const TransactionHistory: React.FC = () => {
               tintColor={PRIMARY}
             />
           }
-        >
-          {sections.length === 0 ? (
+          ListEmptyComponent={
             <View style={styles.emptyWrap}>
               <Text style={styles.emptyText}>No transactions yet.</Text>
             </View>
-          ) : (
-            sections.map((section, sidx) => (
-              <View key={`${section.title}-${sidx}`} style={styles.sectionBlock}>
-                <View style={styles.monthHeader}>
-                  <View style={styles.monthLine} />
-                  <Text style={styles.monthText}>{section.title}</Text>
-                  <View style={styles.monthLine} />
-                </View>
-                <View style={styles.txCard}>
-                  {section.data.map((item, index) => (
-                    <View key={`${item.title}-${item.subtitle}-${index}`}>
-                      {index > 0 ? <View style={styles.txDivider} /> : null}
-                      <View style={styles.txRow}>
-                        <View style={styles.txLeft}>
-                          <Text style={styles.txTitle} numberOfLines={2}>
-                            {item.title}
-                          </Text>
-                          <Text style={styles.txSub}>{item.subtitle || '—'}</Text>
-                        </View>
-                        <Text
-                          style={[styles.txAmount, item.positive ? styles.txCredit : styles.txDebit]}
-                        >
-                          {item.amount}
-                        </Text>
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            ))
-          )}
-
-          {totalPages > 1 ? (
-            <View style={styles.paginationRow}>
-              <TouchableOpacity
-                style={[
-                  styles.paginationNavBtn,
-                  currentPage <= 1 && styles.paginationNavBtnDisabled,
-                ]}
-                onPress={() => goToPage(currentPage - 1)}
-                disabled={currentPage <= 1 || loading}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel="Previous page"
-              >
-                <Text
-                  style={[
-                    styles.paginationNavText,
-                    currentPage <= 1 && styles.paginationNavTextDisabled,
-                  ]}
-                >
-                  Prev
-                </Text>
-              </TouchableOpacity>
-
-              {visiblePages.map(page => {
-                const isActive = page === currentPage;
-                return (
-                  <TouchableOpacity
-                    key={page}
-                    style={[
-                      styles.paginationPageBtn,
-                      isActive && styles.paginationPageBtnActive,
-                    ]}
-                    onPress={() => goToPage(page)}
-                    disabled={isActive || loading}
-                    activeOpacity={0.85}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Page ${page}`}
-                  >
-                    <Text
-                      style={[
-                        styles.paginationPageText,
-                        isActive && styles.paginationPageTextActive,
-                      ]}
-                    >
-                      {page}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-
-              <TouchableOpacity
-                style={[
-                  styles.paginationNavBtn,
-                  currentPage >= totalPages && styles.paginationNavBtnDisabled,
-                ]}
-                onPress={() => goToPage(currentPage + 1)}
-                disabled={currentPage >= totalPages || loading}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel="Next page"
-              >
-                <Text
-                  style={[
-                    styles.paginationNavText,
-                    currentPage >= totalPages && styles.paginationNavTextDisabled,
-                  ]}
-                >
-                  Next
-                </Text>
-              </TouchableOpacity>
-            </View>
-          ) : null}
-        </ScrollView>
+          }
+          ListFooterComponent={listFooter}
+        />
       )}
     </View>
   );

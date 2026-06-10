@@ -85,7 +85,6 @@ export default function PreventiveHealth({ navigation }: any) {
     try {
       const cached = await getPreventivePatientId();
       if (cached) {
-        console.log("[PreventiveHealth] Patient ID (cached):", cached);
       }
 
       const [list, appUserId] = await Promise.all([getPatients(), getUserID()]);
@@ -97,9 +96,7 @@ export default function PreventiveHealth({ navigation }: any) {
 
       const pid = String(row.id);
       await savePreventivePatientId(pid);
-      console.log("[PreventiveHealth] Patient ID:", pid);
     } catch (e) {
-      console.log("[PreventiveHealth] getPatients error", e);
     }
   }, []);
 
@@ -107,10 +104,6 @@ export default function PreventiveHealth({ navigation }: any) {
 
   useFocusEffect(
     useCallback(() => {
-      console.log('========== PreventiveHealth Screen Opened ==========');
-      console.log('Screen   : PreventiveHealth');
-      console.log('Status   : Screen is now active / focused');
-      console.log('====================================================');
 
       void (async () => {
         await syncPreventivePatientFromApi();
@@ -137,7 +130,6 @@ export default function PreventiveHealth({ navigation }: any) {
       setScreenings(screenings);
       setCartCount(cart?.items?.length || 0);
     } catch (e) {
-      console.log("ERROR:", e);
     } finally {
       setLoading(false);
     }
@@ -161,7 +153,6 @@ export default function PreventiveHealth({ navigation }: any) {
     const handleBack = () => {
       if (isNavigating) return true;
       isNavigating = true;
-      console.log('[PreventiveHealth] Hardware back pressed — navigating to Home');
       navigation.navigate("Home");
       return true;
     };
