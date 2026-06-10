@@ -7,10 +7,12 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import ScreenHeader from '../../Components/ScreenHeader/ScreenHeader';
+import PreventiveHealthHeader from '../Home/PreventiveUser/PreventiveHealthHeader';
 import { COLORS, FONT_SIZE, SPACING } from '../../Constants/theme';
 import { RootStackParamList } from '../../navigation/types';
 
@@ -296,7 +298,12 @@ const NewUserRegistrationScreen: React.FC = () => {
 
   return (
     <View style={styles.root}>
-      <ScreenHeader title="New user" bottomRounded />
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.PRIMARY} />
+      <View style={styles.headerShell}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <PreventiveHealthHeader title="New user" showBack />
+        </SafeAreaView>
+      </View>
 
       <ScrollView
         style={styles.scroll}
@@ -408,11 +415,21 @@ export default NewUserRegistrationScreen;
 
 const RADIUS_FIELD = 10;
 const RADIUS_PILL = 28;
+const RADIUS_LG = 16;
 
 const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: COLORS.WHITE,
+  },
+  headerShell: {
+    backgroundColor: COLORS.PRIMARY,
+    borderBottomLeftRadius: RADIUS_LG,
+    borderBottomRightRadius: RADIUS_LG,
+    overflow: 'hidden',
+  },
+  headerSafe: {
+    backgroundColor: COLORS.PRIMARY,
   },
   scroll: {
     flex: 1,

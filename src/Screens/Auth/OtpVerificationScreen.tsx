@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  Alert,
   ActivityIndicator,
   StatusBar,
   KeyboardAvoidingView,
@@ -30,6 +29,7 @@ import { saveAuthTokens, saveUser, saveLabUserId, saveUserID } from '../../Utils
 import { useAppDispatch } from '../../store/hooks';
 import { setSession } from '../../store/authSlice';
 import type { VerifiedUser } from '../../Services/authService';
+import CustomPopup from '../Home/Components/CustomPopup';
 
 type OtpNavProp = NativeStackNavigationProp<RootStackParamList, 'OtpVerification'>;
 type OtpRouteProp = RouteProp<RootStackParamList, 'OtpVerification'>;
@@ -45,7 +45,18 @@ const OtpVerificationScreen: React.FC = () => {
 
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(''));
   const [loading, setLoading] = useState(false);
+  const [popupVisible, setPopupVisible] = useState(false);
+  const [popupTitle, setPopupTitle] = useState('');
+  const [popupMessage, setPopupMessage] = useState('');
   const inputs = useRef<Array<TextInput | null>>([]);
+
+  const showPopup = (title: string, message: string) => {
+    setPopupTitle(title);
+    setPopupMessage(message);
+    setPopupVisible(true);
+  };
+
+  const closePopup = () => setPopupVisible(false);
 
   const handleChange = (value: string, index: number) => {
     if (!/^\d*$/.test(value)) {return;}
@@ -68,7 +79,7 @@ const OtpVerificationScreen: React.FC = () => {
   const handleVerify = async () => {
     const otpCode = otp.join('');
     if (otpCode.length < OTP_LENGTH) {
-      Alert.alert('Invalid OTP', 'Please enter the complete 6-digit OTP.');
+      showPopup('Invalid OTP', 'Please enter the complete 6-digit OTP.');
       return;
     }
 
@@ -82,21 +93,13 @@ const OtpVerificationScreen: React.FC = () => {
         return;
       }
 
-      if (authFlow === 'login') {
-        console.log('[OtpVerificationScreen][Login] verifying OTP for mobile:', mobile);
-      }
       const response =
         authFlow === 'login'
           ? await verifyLoginOtp({ mobile, otp: otpCode })
           : await verifyRegistrationOtp({ mobile, otp: otpCode });
-      console.log('[OtpVerificationScreen] verify-otp full response:', JSON.stringify(response, null, 2));
-      console.log('[OtpVerificationScreen] token:', response?.token);
-      console.log('[OtpVerificationScreen] refreshToken:', response?.refreshToken);
-      console.log('[OtpVerificationScreen] user:', JSON.stringify(response?.user, null, 2));
-      console.log('[OtpVerificationScreen] provider:', JSON.stringify(response?.provider, null, 2));
 
       if (authFlow === 'login' && (!response.token || !response.refreshToken)) {
-        Alert.alert('Error', 'Missing token or refreshToken in verify response.');
+        showPopup('Error', 'Missing token or refreshToken in verify response.');
         return;
       }
 
@@ -109,7 +112,6 @@ const OtpVerificationScreen: React.FC = () => {
       // "Register New User" flow always has the lab worker's own ID available.
       if (response.user?.id) {
         await saveLabUserId(response.user.id);
-        console.log('[OtpVerificationScreen] lab_user_id saved for authFlow=' + authFlow + ':', response.user.id);
       }
       dispatch(
         setSession({
@@ -121,39 +123,21 @@ const OtpVerificationScreen: React.FC = () => {
 
       if (authFlow === 'login') {
         // Route by KYC state: approved → Home; submitted → pending; else → upload docs.
-        console.log('[OtpVerificationScreen][Login] OTP verified — checking identity verification status');
         try {
           const verification = await getIdentityVerificationStatus();
           const record = verification?.data;
-          console.log('[OtpVerificationScreen][Login] GET /identity-verification — full response:', JSON.stringify(verification, null, 2));
-          console.log('[OtpVerificationScreen][Login] KYC record snapshot:', {
-            hasRecord: Boolean(record),
-            verification_status: record?.verification_status ?? null,
-            is_approved: record?.is_approved ?? null,
-            submitted: record?.submitted ?? null,
-            document_url: record?.document_url ?? null,
-            hasDocumentUrl: Boolean(record?.document_url?.trim()),
-            technician_certificate_url: record?.technician_certificate_url ?? null,
-          });
           const approved = isApprovedIdentityVerification(record);
           const submitted = hasSubmittedIdentityVerification(record);
-          console.log('[OtpVerificationScreen][Login] routing flags:', { approved, submitted });
           if (approved) {
-            console.log('[OtpVerificationScreen][Login] → navigate: Home (APPROVED)');
             navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
           } else if (submitted) {
-            console.log('[OtpVerificationScreen][Login] → navigate: VerificationPending (docs submitted, awaiting approval)');
             navigation.reset({ index: 0, routes: [{ name: 'VerificationPending' }] });
           } else if (record) {
-            console.log('[OtpVerificationScreen][Login] → navigate: IdentityVerification (KYC not submitted yet)');
             navigation.reset({ index: 0, routes: [{ name: 'IdentityVerification' }] });
           } else {
-            console.log('[OtpVerificationScreen][Login] → navigate: Home (no KYC record)');
             navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
           }
         } catch (statusError) {
-          console.log('[OtpVerificationScreen][Login] verification-status check error:', statusError);
-          console.log('[OtpVerificationScreen][Login] → navigate: Home (status check failed fallback)');
           navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
         }
         return;
@@ -162,8 +146,7 @@ const OtpVerificationScreen: React.FC = () => {
         navigation.navigate('IdentityVerification');
       }
     } catch (error: any) {
-      console.log('[OtpVerificationScreen] verify-otp error:', error);
-      Alert.alert('Error', error?.message ?? 'OTP verification failed. Please try again.');
+      showPopup('Error', error?.message ?? 'OTP verification failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -171,7 +154,7 @@ const OtpVerificationScreen: React.FC = () => {
 
   const handleResend = async () => {
     if (isPatientRegister) {
-      Alert.alert(
+      showPopup(
         'Test flow',
         'No SMS is sent in this build. Enter any 6 digits and tap Verify to continue.',
       );
@@ -182,11 +165,9 @@ const OtpVerificationScreen: React.FC = () => {
         authFlow === 'login'
           ? await resendLoginOtp(mobile)
           : await resendRegistrationOtp(mobile);
-      console.log('[OtpVerificationScreen] resend-otp response:', response);
-      Alert.alert('OTP Resent', response.message ?? `A new OTP has been sent to +91 ${mobile}`);
+      showPopup('OTP Resent', response.message ?? `A new OTP has been sent to +91 ${mobile}`);
     } catch (error: any) {
-      console.log('[OtpVerificationScreen] resend-otp error:', error);
-      Alert.alert('Error', error?.message ?? 'Failed to resend OTP. Please try again.');
+      showPopup('Error', error?.message ?? 'Failed to resend OTP. Please try again.');
     }
   };
 
@@ -257,6 +238,15 @@ const OtpVerificationScreen: React.FC = () => {
           </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
+
+      <CustomPopup
+        isVisible={popupVisible}
+        onClose={closePopup}
+        onConfirm={closePopup}
+        title={popupTitle}
+        message={popupMessage}
+        showIcon={false}
+      />
     </View>
   );
 };

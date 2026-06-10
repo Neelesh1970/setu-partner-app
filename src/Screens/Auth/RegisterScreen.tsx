@@ -128,9 +128,11 @@ const RegisterScreen: React.FC = () => {
   return (
     <>
       <StatusBar barStyle="light-content" backgroundColor="#1C39BB" />
-      <SafeAreaView style={styles.headerSafe}>
-        <PreventiveHealthHeader title="Create Your Account" />
-      </SafeAreaView>
+      <View style={styles.headerShell}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <PreventiveHealthHeader title="Create Your Account" />
+        </SafeAreaView>
+      </View>
 
       <SafeAreaView style={styles.bodySafe}>
         <ScrollView
@@ -379,11 +381,14 @@ const RegisterScreen: React.FC = () => {
 export default RegisterScreen;
 
 const styles = StyleSheet.create({
-  headerSafe: {
+  headerShell: {
     backgroundColor: '#2563EB',
     borderBottomLeftRadius: 18,
     borderBottomRightRadius: 18,
     overflow: 'hidden',
+  },
+  headerSafe: {
+    backgroundColor: '#2563EB',
   },
   bodySafe: {
     flex: 1,

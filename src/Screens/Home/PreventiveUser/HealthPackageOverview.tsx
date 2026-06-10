@@ -132,16 +132,18 @@ export default function WomenHealthOverview({ navigation, route }: any) {
     <>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.headerBg} />
 
-      <SafeAreaView style={styles.headerSafe}>
-        <PreventiveHealthHeader
-          title={selectedPackage?.package_name || "Package"}
-          onBackPress={() => navigation.goBack()}
-          cartCount={cartCount}
-          showRight2
-          rightIcon2="cart-outline"
-          onRightPress2={() => navigation.navigate("PreventiveCart")}
-        />
-      </SafeAreaView>
+      <View style={styles.headerShell}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <PreventiveHealthHeader
+            title={selectedPackage?.package_name || "Package"}
+            onBackPress={() => navigation.goBack()}
+            cartCount={cartCount}
+            showRight2
+            rightIcon2="cart-outline"
+            onRightPress2={() => navigation.navigate("PreventiveCart")}
+          />
+        </SafeAreaView>
+      </View>
 
       <View style={styles.root}>
         {loading ? (
@@ -255,11 +257,14 @@ export default function WomenHealthOverview({ navigation, route }: any) {
 
 const styles = StyleSheet.create({
     flex: { flex: 1 },
-    headerSafe: {
+    headerShell: {
       backgroundColor: COLORS.headerBg,
       borderBottomLeftRadius: ms(18),
       borderBottomRightRadius: ms(18),
       overflow: "hidden",
+    },
+    headerSafe: {
+      backgroundColor: COLORS.headerBg,
     },
     root: {
       flex: 1,

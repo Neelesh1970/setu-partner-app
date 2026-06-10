@@ -98,17 +98,7 @@ const TestDetails: React.FC = () => {
     const packageDevices = (patient.packages ?? []).flatMap(pkg => pkg.included_tests ?? []);
     const allDevices: RawDeviceItem[] = [...standaloneDevices, ...packageDevices];
 
-    console.log(
-      '[TestDetails] onContinue — patient:', patient.full_name,
-      '| standalone devices:', standaloneDevices.length,
-      '| package devices:', packageDevices.length,
-      '| total:', allDevices.length,
-      '| can_perform_test:', patient.can_perform_test,
-      '| booking_id:', patient.booking_id,
-    );
-
     if (allDevices.length > 1) {
-      console.log('[TestDetails] multiple devices — navigating to DeviceSelect screen');
       navigation.navigate('DeviceSelect', {
         patientName: (patient.full_name ?? '').trim() || '—',
         bookingId: patient.booking_id ?? null,
@@ -133,12 +123,6 @@ const TestDetails: React.FC = () => {
             testName: labPatientTestLabel(patient),
           });
 
-    console.log(
-      '[TestDetails] navigating to device — name:', picked.deviceName,
-      '| id:', picked.deviceId,
-      '| bookingItemId:', picked.bookingItemId,
-    );
-
     if (
       applyLabIotPerformTestNavigation(
         navigation.navigate,
@@ -152,7 +136,6 @@ const TestDetails: React.FC = () => {
     }
 
     const nameForMsg = picked.deviceName ?? labPatientTestLabel(patient);
-    console.log('[TestDetails] device unavailable for:', nameForMsg);
     setDeviceUnavailablePopupMessage(`No device available for this ${nameForMsg}`);
     setDeviceUnavailablePopupVisible(true);
   }, [navigation, patient]);
@@ -227,8 +210,14 @@ const TestDetails: React.FC = () => {
   const enforceSlotWindow =
     tabFilter === 'upcoming' || tabFilter === 'pending';
 
+  const isTestCompleted = useMemo(
+    () => (patient?.test_status ?? '').toLowerCase().trim() === 'completed',
+    [patient],
+  );
+
   const canContinueNow = useMemo(() => {
     if (!patient) return false;
+    if (isTestCompleted) return false;
 
     if (!ENABLE_CONTINUE_SLOT_WINDOW_CHECK) return true;
 
@@ -248,7 +237,7 @@ const TestDetails: React.FC = () => {
       now.getTime() >= bounds.start.getTime() &&
       now.getTime() < bounds.end.getTime()
     );
-  }, [patient, enforceSlotWindow]);
+  }, [patient, enforceSlotWindow, isTestCompleted]);
 
   useFocusEffect(
     useCallback(() => {
@@ -348,27 +337,29 @@ const TestDetails: React.FC = () => {
             </ScrollView>
           )}
 
-          <View style={[styles.footer, { paddingBottom: bottomPad, paddingHorizontal: horizontalPad }]}>
-            <TouchableOpacity
-              style={[
-                styles.continueBtn,
-                !canContinueNow ? styles.continueBtnDisabled : null,
-              ]}
-              onPress={onContinue}
-              activeOpacity={0.9}
-              disabled={!canContinueNow}
-              accessibilityRole="button"
-            >
-              <Text
+          {!loading && !isTestCompleted ? (
+            <View style={[styles.footer, { paddingBottom: bottomPad, paddingHorizontal: horizontalPad }]}>
+              <TouchableOpacity
                 style={[
-                  styles.continueBtnText,
-                  !canContinueNow ? styles.continueBtnTextDisabled : null,
+                  styles.continueBtn,
+                  !canContinueNow ? styles.continueBtnDisabled : null,
                 ]}
+                onPress={onContinue}
+                activeOpacity={0.9}
+                disabled={!canContinueNow}
+                accessibilityRole="button"
               >
-                Continue
-              </Text>
-            </TouchableOpacity>
-          </View>
+                <Text
+                  style={[
+                    styles.continueBtnText,
+                    !canContinueNow ? styles.continueBtnTextDisabled : null,
+                  ]}
+                >
+                  Continue
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
       </View>
 

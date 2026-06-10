@@ -148,16 +148,18 @@ const DeviceOverview = ({ navigation, route }: any) => {
     <>
       <StatusBar barStyle="light-content" backgroundColor="#1C39BB" />
 
-      <SafeAreaView style={styles.headerSafe}>
-        <PreventiveHealthHeader
-          title={headerTitle}
-          onBackPress={() => navigation.goBack()}
-          cartCount={cartCount}
-          showRight2
-          rightIcon2="cart-outline"
+      <View style={styles.headerShell}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <PreventiveHealthHeader
+            title={headerTitle}
+            onBackPress={() => navigation.goBack()}
+            cartCount={cartCount}
+            showRight2
+            rightIcon2="cart-outline"
           onRightPress2={() => navigation.navigate("PreventiveCart")}
-        />
-      </SafeAreaView>
+          />
+        </SafeAreaView>
+      </View>
 
       <ScrollView
         contentContainerStyle={{ paddingBottom: 120 }}
@@ -270,11 +272,14 @@ const DeviceOverview = ({ navigation, route }: any) => {
 export default DeviceOverview;
 
 const styles = StyleSheet.create({
-  headerSafe: {
+  headerShell: {
     backgroundColor: "#1C39BB",
     borderBottomLeftRadius: 18,
     borderBottomRightRadius: 18,
     overflow: "hidden",
+  },
+  headerSafe: {
+    backgroundColor: "#1C39BB",
   },
   bannerCard: {
     marginHorizontal: 16,

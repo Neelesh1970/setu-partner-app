@@ -244,12 +244,14 @@ export default function PreventiveCart({ navigation }: any) {
         return (
             <>
                 <StatusBar barStyle="light-content" backgroundColor="#1C39BB" />
-                <SafeAreaView style={styles.headerSafe}>
-                    <PreventiveHealthHeader
-                        title="Cart"
-                        onBackPress={() => navigation.goBack()}
-                    />
-                </SafeAreaView>
+                <View style={styles.headerShell}>
+                    <SafeAreaView edges={['top']} style={styles.headerSafe}>
+                        <PreventiveHealthHeader
+                            title="Cart"
+                            onBackPress={() => navigation.goBack()}
+                        />
+                    </SafeAreaView>
+                </View>
                 <SafeAreaView style={styles.bodySafe}>
                     <View style={styles.empty}>
                         <ActivityIndicator size="large" color={COLORS.cta} />
@@ -263,12 +265,14 @@ export default function PreventiveCart({ navigation }: any) {
         return (
             <>
                 <StatusBar barStyle="light-content" backgroundColor="#1C39BB" />
-                <SafeAreaView style={styles.headerSafe}>
-                    <PreventiveHealthHeader
-                        title="Cart"
-                        onBackPress={() => navigation.goBack()}
-                    />
-                </SafeAreaView>
+                <View style={styles.headerShell}>
+                    <SafeAreaView edges={['top']} style={styles.headerSafe}>
+                        <PreventiveHealthHeader
+                            title="Cart"
+                            onBackPress={() => navigation.goBack()}
+                        />
+                    </SafeAreaView>
+                </View>
                 <SafeAreaView style={styles.bodySafe}>
                     <View style={styles.empty}>
                         {cartFetchError ? (
@@ -293,12 +297,14 @@ export default function PreventiveCart({ navigation }: any) {
         <>
             <StatusBar barStyle="light-content" backgroundColor="#1C39BB" />
 
-            <SafeAreaView style={styles.headerSafe}>
-                <PreventiveHealthHeader
-                    title="Cart"
-                    onBackPress={() => navigation.goBack()}
-                />
-            </SafeAreaView>
+            <View style={styles.headerShell}>
+                <SafeAreaView edges={['top']} style={styles.headerSafe}>
+                    <PreventiveHealthHeader
+                        title="Cart"
+                        onBackPress={() => navigation.goBack()}
+                    />
+                </SafeAreaView>
+            </View>
 
             <SafeAreaView style={styles.bodySafe}>
                 <FlatList
@@ -386,11 +392,14 @@ export default function PreventiveCart({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-    headerSafe: {
+    headerShell: {
         backgroundColor: "#1C39BB",
         borderBottomLeftRadius: ms(18),
         borderBottomRightRadius: ms(18),
         overflow: "hidden",
+    },
+    headerSafe: {
+        backgroundColor: "#1C39BB",
     },
     bodySafe: {
         flex: 1,

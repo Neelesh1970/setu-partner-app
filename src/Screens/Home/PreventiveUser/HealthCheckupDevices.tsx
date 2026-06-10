@@ -89,17 +89,19 @@ const HealthCheckupDevices = ({ navigation }: any) => {
     <>
       <StatusBar barStyle="light-content" backgroundColor="#1C39BB" />
 
-      <SafeAreaView style={styles.headerSafe}>
-        <PreventiveHealthHeader
-          title="Health Checkup Devices"
-          onBackPress={() => navigation.goBack()}
-          showRight2
-          rightIcon2="cart-outline"
-          rightIcon2Type="ion"
-          cartCount={cartCount}
-          onRightPress2={() => navigation.navigate("PreventiveCart")}
-        />
-      </SafeAreaView>
+      <View style={styles.headerShell}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <PreventiveHealthHeader
+            title="Health Checkup Devices"
+            onBackPress={() => navigation.goBack()}
+            showRight2
+            rightIcon2="cart-outline"
+            rightIcon2Type="ion"
+            cartCount={cartCount}
+            onRightPress2={() => navigation.navigate("PreventiveCart")}
+          />
+        </SafeAreaView>
+      </View>
 
       <SafeAreaView style={styles.bodySafe}>
         {loading ? <AppSkeleton variant="default" /> : <FlatList
@@ -163,11 +165,14 @@ const HealthCheckupDevices = ({ navigation }: any) => {
 export default HealthCheckupDevices;
 
 const styles = StyleSheet.create({
-  headerSafe: {
+  headerShell: {
     backgroundColor: "#1C39BB",
     borderBottomLeftRadius: 18,
     borderBottomRightRadius: 18,
     overflow: "hidden",
+  },
+  headerSafe: {
+    backgroundColor: "#1C39BB",
   },
   bodySafe: {
     flex: 1,

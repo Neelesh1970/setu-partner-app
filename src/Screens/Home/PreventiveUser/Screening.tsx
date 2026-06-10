@@ -128,12 +128,14 @@ const Screening = ({ navigation, route }: any) => {
     <>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.headerBg} />
 
-      <SafeAreaView style={styles.headerSafe}>
-        <PreventiveHealthHeader
-          title={detail.title}
-          onBackPress={() => navigation.goBack()}
-        />
-      </SafeAreaView>
+      <View style={styles.headerShell}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <PreventiveHealthHeader
+            title={detail.title}
+            onBackPress={() => navigation.goBack()}
+          />
+        </SafeAreaView>
+      </View>
 
       <View style={styles.root}>
         <ScrollView
@@ -212,11 +214,14 @@ const Screening = ({ navigation, route }: any) => {
 export default Screening;
 
 const styles = StyleSheet.create({
-  headerSafe: {
+  headerShell: {
     backgroundColor: COLORS.headerBg,
     borderBottomLeftRadius: ms(18),
     borderBottomRightRadius: ms(18),
     overflow: "hidden",
+  },
+  headerSafe: {
+    backgroundColor: COLORS.headerBg,
   },
   root: {
     flex: 1,

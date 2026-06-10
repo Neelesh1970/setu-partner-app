@@ -234,12 +234,14 @@ const TransactionHistory: React.FC = () => {
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={PRIMARY} />
 
-      <SafeAreaView style={styles.headerSafe}>
-        <PreventiveHealthHeader
-          title="Transaction History"
-          onBackPress={() => navigation.goBack()}
-        />
-      </SafeAreaView>
+      <View style={styles.headerShell}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <PreventiveHealthHeader
+            title="Transaction History"
+            onBackPress={() => navigation.goBack()}
+          />
+        </SafeAreaView>
+      </View>
 
       {loading && !refreshing ? (
         <View style={styles.centered}>
@@ -386,11 +388,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.BACKGROUND,
   },
-  headerSafe: {
+  headerShell: {
     backgroundColor: PRIMARY,
     borderBottomLeftRadius: ms(16),
     borderBottomRightRadius: ms(16),
     overflow: 'hidden',
+  },
+  headerSafe: {
+    backgroundColor: PRIMARY,
   },
   centered: {
     flex: 1,

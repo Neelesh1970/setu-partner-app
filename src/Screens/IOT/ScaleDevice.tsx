@@ -22,6 +22,11 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import {BleManager, Device, Subscription} from 'react-native-ble-plx';
 import {Buffer} from 'buffer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  isBleDeviceConnected,
+  isBleOperationCancelled,
+  isExpectedBleDisconnectError,
+} from '../../Utils/bleErrorHandling';
 import {useNavigation, useRoute, type RouteProp} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RootStackParamList} from '../../navigation/types';
@@ -349,13 +354,13 @@ export default function ScaleDeviceScreen() {
       void (async () => {
         try {
           await stopAll();
-        } catch (e) {
-          console.log('CLEANUP STOPALL ERROR:', e);
+        } catch {
+          /* noop */
         }
         try {
           managerRef.current?.destroy();
-        } catch (e) {
-          console.log('CLEANUP DESTROY ERROR:', e);
+        } catch {
+          /* noop */
         }
         managerRef.current = null;
       })();
@@ -374,8 +379,8 @@ export default function ScaleDeviceScreen() {
       if (old) {
         setHistory(JSON.parse(old) as WeightRecord[]);
       }
-    } catch (e) {
-      console.log('LOAD HISTORY ERROR:', e);
+    } catch {
+      /* noop */
     }
   }
 
@@ -418,10 +423,8 @@ export default function ScaleDeviceScreen() {
       const newHistory = [record, ...history].slice(0, 20);
       setHistory(newHistory);
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newHistory));
-
-      console.log('SAVED WEIGHT RECORD:', record);
-    } catch (e) {
-      console.log('SAVE HISTORY ERROR:', e);
+    } catch {
+      /* noop */
     }
   }
 
@@ -429,8 +432,8 @@ export default function ScaleDeviceScreen() {
     try {
       await AsyncStorage.removeItem(STORAGE_KEY);
       setHistory([]);
-    } catch (e) {
-      console.log('CLEAR HISTORY ERROR:', e);
+    } catch {
+      /* noop */
     }
   }
 
@@ -477,7 +480,6 @@ export default function ScaleDeviceScreen() {
         return;
       }
       if (error) {
-        console.log('SCAN ERROR:', error);
         setStatus(error.message);
         return;
       }
@@ -491,13 +493,6 @@ export default function ScaleDeviceScreen() {
         name.toLowerCase().includes('renpho') ||
         hasService(device, UUID.SVC_T1) ||
         hasService(device, UUID.SVC_T2);
-
-      console.log('FOUND:', {
-        id: device.id,
-        name,
-        rssi: device.rssi,
-        serviceUUIDs: device.serviceUUIDs,
-      });
 
       if (!isTarget) return;
 
@@ -524,6 +519,15 @@ export default function ScaleDeviceScreen() {
       const mtuDevice = await d.requestMTU(185).catch(() => d);
       connectedDevice.current = mtuDevice;
 
+      const disconnectSub = mtuDevice.onDisconnected(() => {
+        notifySubs.current.forEach(s => s?.remove?.());
+        notifySubs.current = [];
+        connectedDevice.current = null;
+        setConnectedName('');
+        setStatus('Device disconnected');
+      });
+      notifySubs.current.push(disconnectSub);
+
       resetProtocolState();
 
       setStatus('Subscribing notifications...');
@@ -531,7 +535,8 @@ export default function ScaleDeviceScreen() {
 
       setStatus('Connected. Step on scale and wait for weight...');
     } catch (e) {
-      console.log('CONNECT ERROR:', e);
+      connectedDevice.current = null;
+      setConnectedName('');
       setStatus(`Connect error: ${(e as Error).message}`);
     }
   }
@@ -551,24 +556,6 @@ export default function ScaleDeviceScreen() {
     notifySubs.current.forEach(s => s?.remove?.());
     notifySubs.current = [];
 
-    const services = await device.services();
-
-    for (const s of services) {
-      console.log('SERVICE:', s.uuid);
-
-      const chars = await s.characteristics();
-      for (const c of chars) {
-        console.log('CHAR:', {
-          service: s.uuid,
-          char: c.uuid,
-          isNotifiable: c.isNotifiable,
-          isIndicatable: c.isIndicatable,
-          isWritableWithResponse: c.isWritableWithResponse,
-          isWritableWithoutResponse: c.isWritableWithoutResponse,
-        });
-      }
-    }
-
     await tryMonitor(device, UUID.SVC_T1, UUID.NOTIFY_T1);
     await tryMonitor(device, UUID.SVC_T2, UUID.NOTIFY_T2);
   }
@@ -584,12 +571,9 @@ export default function ScaleDeviceScreen() {
         charUuid,
         (error, characteristic) => {
           if (error) {
-            console.log(
-              'NOTIFY ERROR:',
-              serviceUuid,
-              charUuid,
-              error.message,
-            );
+            if (isBleOperationCancelled(error) || isExpectedBleDisconnectError(error)) {
+              return;
+            }
             return;
           }
 
@@ -598,18 +582,14 @@ export default function ScaleDeviceScreen() {
           const bytes = base64ToBytes(characteristic.value);
           const hex = bytesToHex(bytes);
 
-          console.log('LIVE NOTIFY HEX:', hex);
-          console.log('BYTES:', bytes);
-
           setLastHex(hex);
           handleVendorPacket(bytes, device);
         },
       );
 
       notifySubs.current.push(sub);
-      console.log('MONITOR OK:', serviceUuid, charUuid);
-    } catch (e) {
-      console.log('MONITOR SKIP:', serviceUuid, charUuid, (e as Error).message);
+    } catch {
+      /* noop */
     }
   }
 
@@ -618,10 +598,6 @@ export default function ScaleDeviceScreen() {
 
     if (seenProtocolType.current === 0x00 && bytes.length > 2) {
       seenProtocolType.current = bytes[2] & 0xff;
-      console.log(
-        'CAPTURED protocol type:',
-        seenProtocolType.current.toString(16),
-      );
     }
 
     const opcode = bytes[0] & 0xff;
@@ -637,29 +613,19 @@ export default function ScaleDeviceScreen() {
     }
 
     if (opcode === 0x14) {
-      console.log('0x14 ACK received, sending time sync');
-      void sendTimeSync(device);
+      runScaleBleTask(() => sendTimeSync(device));
       return;
     }
-
-    console.log('UNHANDLED OPCODE:', opcode.toString(16), bytesToHex(bytes));
   }
 
   function handleScaleInfoFrame(bytes: number[], device: Device): void {
-    console.log('SCALE INFO 0x12:', bytesToHex(bytes));
-
     if (bytes.length > 10) {
       weightScaleFactor.current = bytes[10] === 1 ? 100 : 10;
-      console.log('weightScaleFactor:', weightScaleFactor.current);
     }
 
     if (bytes.length >= 12) {
       const rawMaybeWeight = u16be(bytes[10], bytes[11]);
       const kg10 = rawMaybeWeight / 10;
-      const kg100 = rawMaybeWeight / 100;
-
-      console.log('0x12 candidate weight /10:', kg10);
-      console.log('0x12 candidate weight /100:', kg100);
 
       if (kg10 > 5 && kg10 < 250) {
         updateWeight(kg10, false);
@@ -668,26 +634,16 @@ export default function ScaleDeviceScreen() {
 
     if (!hasReceivedProtocolType.current) {
       hasReceivedProtocolType.current = true;
-      void sendConfigurationCommands(device);
+      runScaleBleTask(() => sendConfigurationCommands(device));
     }
   }
 
   function handleLiveWeightFrame(bytes: number[]): void {
-    console.log('LIVE WEIGHT 0x10:', bytesToHex(bytes));
-
     if (bytes.length < 10) return;
 
     const raw = u16be(bytes[3], bytes[4]);
     const kg = raw / 100;
     const stable = bytes[5] === 1 || bytes[5] === 2;
-
-    console.log({
-      stable,
-      raw,
-      kg,
-      r1: u16be(bytes[6], bytes[7]),
-      r2: u16be(bytes[8], bytes[9]),
-    });
 
     if (kg > 5 && kg < 250) {
       updateWeight(kg, stable);
@@ -707,76 +663,90 @@ export default function ScaleDeviceScreen() {
     lastWeight.current = rounded;
     setWeight(rounded);
 
-    console.log(
-      'WEIGHT RESULT:',
-      rounded,
-      'stable:',
-      stable,
-      'same:',
-      sameCount.current,
-    );
-
     if (stable || sameCount.current >= 3) {
       setStatus(`Stable weight: ${rounded} kg`);
-      console.log('STABLE WEIGHT:', rounded);
       void saveWeightRecord(rounded);
     } else {
       setStatus(`Live weight: ${rounded} kg`);
     }
   }
 
+  function runScaleBleTask(task: () => Promise<void>): void {
+    void task().catch(() => {
+      /* Notify-driven BLE writes can race with disconnect — swallow rejections. */
+    });
+  }
+
   async function sendConfigurationCommands(device: Device): Promise<void> {
-    console.log('Sending QN config...');
+    try {
+      const unitKg = 0x01;
+      const protocol = seenProtocolType.current || 0x00;
 
-    const unitKg = 0x01;
-    const protocol = seenProtocolType.current || 0x00;
+      const cfg: number[] = [
+        0x13, 0x09, protocol, unitKg, 0x10, 0x00, 0x00, 0x00, 0x00,
+      ];
+      cfg[cfg.length - 1] = checksum(cfg, 0, cfg.length - 1);
 
-    const cfg: number[] = [
-      0x13, 0x09, protocol, unitKg, 0x10, 0x00, 0x00, 0x00, 0x00,
-    ];
-    cfg[cfg.length - 1] = checksum(cfg, 0, cfg.length - 1);
-
-    await writeAny(device, cfg, 'CONFIG');
-    await sendTimeSync(device);
+      await writeAny(device, cfg, 'CONFIG');
+      await sendTimeSync(device);
+    } catch (error) {
+      if (!isExpectedBleDisconnectError(error)) {
+        throw error;
+      }
+    }
   }
 
   async function sendTimeSync(device: Device): Promise<void> {
-    const epochSecs =
-      Math.floor(Date.now() / 1000) - SCALE_UNIX_TIMESTAMP_OFFSET;
+    try {
+      const epochSecs =
+        Math.floor(Date.now() / 1000) - SCALE_UNIX_TIMESTAMP_OFFSET;
 
-    const t = epochSecs >>> 0;
-    const protocol = seenProtocolType.current || 0x00;
+      const t = epochSecs >>> 0;
+      const protocol = seenProtocolType.current || 0x00;
 
-    const msg20: number[] = [
-      0x20,
-      0x08,
-      protocol,
-      t & 0xff,
-      (t >>> 8) & 0xff,
-      (t >>> 16) & 0xff,
-      (t >>> 24) & 0xff,
-      0x00,
-    ];
-    msg20[msg20.length - 1] = checksum(msg20, 0, msg20.length - 2);
+      const msg20: number[] = [
+        0x20,
+        0x08,
+        protocol,
+        t & 0xff,
+        (t >>> 8) & 0xff,
+        (t >>> 16) & 0xff,
+        (t >>> 24) & 0xff,
+        0x00,
+      ];
+      msg20[msg20.length - 1] = checksum(msg20, 0, msg20.length - 2);
 
-    await writeAny(device, msg20, 'TIME 0x20');
+      await writeAny(device, msg20, 'TIME 0x20');
 
-    const timeMagic: number[] = [
-      0x02,
-      t & 0xff,
-      (t >>> 8) & 0xff,
-      (t >>> 16) & 0xff,
-      (t >>> 24) & 0xff,
-    ];
+      const timeMagic: number[] = [
+        0x02,
+        t & 0xff,
+        (t >>> 8) & 0xff,
+        (t >>> 16) & 0xff,
+        (t >>> 24) & 0xff,
+      ];
 
-    await writeAny(device, timeMagic, 'TIME MAGIC');
+      await writeAny(device, timeMagic, 'TIME MAGIC');
+    } catch (error) {
+      if (!isExpectedBleDisconnectError(error)) {
+        throw error;
+      }
+    }
   }
 
   async function writeAny(
     device: Device,
     bytes: number[],
-    label: string,
+    _label: string,
   ): Promise<boolean> {
+    if (connectedDevice.current?.id !== device.id) {
+      return false;
+    }
+
+    if (!(await isBleDeviceConnected(device))) {
+      return false;
+    }
+
     const b64 = bytesToBase64(bytes);
 
     const targets: [string, string][] = [
@@ -788,10 +758,11 @@ export default function ScaleDeviceScreen() {
     for (const [svc, chr] of targets) {
       try {
         await device.writeCharacteristicWithResponseForService(svc, chr, b64);
-        console.log('WRITE OK:', label, svc, chr, bytesToHex(bytes));
         return true;
-      } catch (e) {
-        console.log('WRITE SKIP:', label, svc, chr, (e as Error).message);
+      } catch (error) {
+        if (isExpectedBleDisconnectError(error)) {
+          return false;
+        }
       }
     }
 
@@ -809,11 +780,12 @@ export default function ScaleDeviceScreen() {
     notifySubs.current = [];
 
     try {
-      if (connectedDevice.current) {
-        await connectedDevice.current.cancelConnection();
+      const device = connectedDevice.current;
+      if (device && (await isBleDeviceConnected(device))) {
+        await device.cancelConnection();
       }
     } catch {
-      /* noop */
+      /* Disconnect teardown — device may already be gone. */
     }
 
     connectedDevice.current = null;
@@ -911,11 +883,11 @@ export default function ScaleDeviceScreen() {
     setIsPdfLoading(true);
     try {
       if (bookingId) {
-        await axiosInstance.post('reports/payload/pdf', {bookingId});
+        const pdfBody = { bookingId };
+        await axiosInstance.post('reports/payload/pdf', pdfBody);
       }
-    } catch (err) {
-      const e = err as {message?: string};
-      console.warn('[ScaleDevice] PDF generation failed:', e?.message ?? err);
+    } catch {
+      /* noop */
     } finally {
       setIsPdfLoading(false);
     }

@@ -1,13 +1,13 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Dimensions,
   PixelRatio,
   GestureResponderEvent,
   Image,
+  useWindowDimensions,
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
@@ -48,16 +48,7 @@ interface PreventiveHealthHeaderProps {
   rightSlot?: React.ReactNode;
 }
 
-/* ================= UTILS ================= */
-
-const { width } = Dimensions.get("window");
-
-const rs = (n: number): number =>
-  Math.round(PixelRatio.roundToNearestPixel(n * (width / 375)));
-
 const HEADER_BG = "#1C39BB";
-const BACK_ICON_SIZE = 25;
-const ICON_SIZE = rs(24);
 
 /* ================= COMPONENT ================= */
 
@@ -84,6 +75,57 @@ const PreventiveHealthHeader: React.FC<PreventiveHealthHeaderProps> = ({
 
   rightSlot,
 }) => {
+  const { width } = useWindowDimensions();
+  const rs = (n: number) =>
+    Math.round(PixelRatio.roundToNearestPixel(n * (width / 375)));
+
+  const dynamicStyles = useMemo(
+    () =>
+      StyleSheet.create({
+        header: {
+          padding: rs(12),
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+        },
+        avatar: {
+          width: rs(44),
+          height: rs(44),
+          borderRadius: rs(22),
+          backgroundColor: "rgba(255,255,255,0.25)",
+          alignItems: "center",
+          justifyContent: "center",
+          marginRight: rs(8),
+          overflow: "hidden",
+        },
+        avatarAfterBack: {
+          marginLeft: rs(6),
+        },
+        avatarText: {
+          color: "#FFFFFF",
+          fontWeight: "700",
+          fontSize: rs(14),
+        },
+        title: {
+          color: "#FFFFFF",
+          fontSize: rs(20),
+          fontWeight: "700",
+          flex: 1,
+          minWidth: 0,
+        },
+        iconBtn: {
+          width: rs(36),
+          height: rs(36),
+          alignItems: "center",
+          justifyContent: "center",
+        },
+      }),
+    [width],
+  );
+
+  const backIconSize = rs(25);
+  const iconSize = rs(24);
+
   const [avatarImageFailed, setAvatarImageFailed] = useState(false);
   const trimmedAvatarUrl = avatarImageUrl?.trim() ?? "";
   useEffect(() => {
@@ -104,13 +146,13 @@ const PreventiveHealthHeader: React.FC<PreventiveHealthHeaderProps> = ({
       return (
         <MaterialCommunityIcons
           name={name}
-          size={ICON_SIZE}
+          size={iconSize}
           color="#fff"
         />
       );
     }
 
-    return <Ionicons name={name} size={ICON_SIZE} color="#fff" />;
+    return <Ionicons name={name} size={iconSize} color="#fff" />;
   };
 
   const initials = avatarInitials?.trim();
@@ -122,18 +164,18 @@ const PreventiveHealthHeader: React.FC<PreventiveHealthHeaderProps> = ({
 
   return (
     <View style={styles.root}>
-      <View style={styles.header}>
+      <View style={dynamicStyles.header}>
         {/* LEFT */}
         <View style={styles.leftWrap}>
           {showBack && (
             <TouchableOpacity
               onPress={handleBack}
-              style={styles.iconBtn}
+              style={dynamicStyles.iconBtn}
               hitSlop={10}
             >
               <Ionicons
                 name="arrow-back"
-                size={BACK_ICON_SIZE}
+                size={backIconSize}
                 color="#fff"
               />
             </TouchableOpacity>
@@ -145,8 +187,8 @@ const PreventiveHealthHeader: React.FC<PreventiveHealthHeaderProps> = ({
                 onPress={onAvatarPress}
                 activeOpacity={0.85}
                 style={[
-                  styles.avatar,
-                  showBack ? styles.avatarAfterBack : null,
+                  dynamicStyles.avatar,
+                  showBack ? dynamicStyles.avatarAfterBack : null,
                 ]}
                 accessibilityRole="button"
                 accessibilityLabel="Open profile"
@@ -159,14 +201,14 @@ const PreventiveHealthHeader: React.FC<PreventiveHealthHeaderProps> = ({
                     onError={() => setAvatarImageFailed(true)}
                   />
                 ) : (
-                  <Text style={styles.avatarText}>{initials || "?"}</Text>
+                  <Text style={dynamicStyles.avatarText}>{initials || "?"}</Text>
                 )}
               </TouchableOpacity>
             ) : (
               <View
                 style={[
-                  styles.avatar,
-                  showBack ? styles.avatarAfterBack : null,
+                  dynamicStyles.avatar,
+                  showBack ? dynamicStyles.avatarAfterBack : null,
                 ]}
               >
                 {showAvatarImage ? (
@@ -177,14 +219,14 @@ const PreventiveHealthHeader: React.FC<PreventiveHealthHeaderProps> = ({
                     onError={() => setAvatarImageFailed(true)}
                   />
                 ) : (
-                  <Text style={styles.avatarText}>{initials || "?"}</Text>
+                  <Text style={dynamicStyles.avatarText}>{initials || "?"}</Text>
                 )}
               </View>
             ))}
 
           <Text
             numberOfLines={1}
-            style={[styles.title, { marginLeft: titleMarginLeft }]}
+            style={[dynamicStyles.title, { marginLeft: titleMarginLeft }]}
           >
             {title}
           </Text>
@@ -199,7 +241,7 @@ const PreventiveHealthHeader: React.FC<PreventiveHealthHeaderProps> = ({
               {showRight1 && (
                 <TouchableOpacity
                   onPress={onRightPress1}
-                  style={styles.iconBtn}
+                  style={dynamicStyles.iconBtn}
                   hitSlop={10}
                 >
                   {renderIcon(rightIcon1Type, rightIcon1)}
@@ -209,7 +251,7 @@ const PreventiveHealthHeader: React.FC<PreventiveHealthHeaderProps> = ({
               {showRight2 && (
                 <TouchableOpacity
                   onPress={onRightPress2}
-                  style={styles.iconBtn}
+                  style={dynamicStyles.iconBtn}
                   hitSlop={10}
                 >
                   {renderIcon(rightIcon2Type, rightIcon2)}
@@ -239,55 +281,20 @@ const styles = StyleSheet.create({
   root: {
     backgroundColor: HEADER_BG,
   },
-  header: {
-    padding: rs(12),
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
   leftWrap: {
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
+    minWidth: 0,
   },
   rightWrap: {
     flexDirection: "row",
     alignItems: "center",
-  },
-  avatar: {
-    width: rs(44),
-    height: rs(44),
-    borderRadius: rs(22),
-    backgroundColor: "rgba(255,255,255,0.25)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: rs(8),
-    overflow: "hidden",
+    flexShrink: 0,
   },
   avatarImage: {
     width: "100%",
     height: "100%",
-  },
-  avatarAfterBack: {
-    marginLeft: rs(6),
-  },
-  avatarText: {
-    color: "#FFFFFF",
-    fontWeight: "700",
-    fontSize: rs(14),
-  },
-  title: {
-    color: "#FFFFFF",
-    fontSize: 20,
-    fontWeight: "700",
-    flex: 1,
-    minWidth: 0,
-  },
-  iconBtn: {
-    width: rs(36),
-    height: rs(36),
-    alignItems: "center",
-    justifyContent: "center",
   },
   cartBadge: {
     position: "absolute",
