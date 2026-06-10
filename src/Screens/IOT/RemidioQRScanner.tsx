@@ -4,7 +4,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Button,
   Linking,
   Modal,
   StyleSheet,
@@ -163,8 +162,11 @@ const RemidioQRScanner = ({ onBack }: RemidioQRScannerProps) => {
     setIsPdfLoading(true);
     try {
       const pdfBody = { bookingId: routeBookingId };
-      await axiosInstance.post('reports/payload/pdf', pdfBody);
-    } catch {
+      console.log('[RemidioQRScanner] reports/payload/pdf request:', JSON.stringify(pdfBody, null, 2));
+      const pdfRes = await axiosInstance.post('reports/payload/pdf', pdfBody);
+      console.log('[RemidioQRScanner] reports/payload/pdf response:', JSON.stringify(pdfRes.data, null, 2));
+    } catch (err) {
+      console.log('[RemidioQRScanner] reports/payload/pdf error:', err);
       // proceed to Reports regardless
     } finally {
       setIsPdfLoading(false);
@@ -231,7 +233,15 @@ const RemidioQRScanner = ({ onBack }: RemidioQRScannerProps) => {
       parseQR(value);
     },
   });
-  if (!showScanner) {
+
+  const handleAllowCamera = async (): Promise<void> => {
+    const granted = hasPermission || (await requestPermission());
+    if (granted) {
+      setShowScanner(true);
+    }
+  };
+
+  if (!showScanner || !hasPermission) {
     return (
       <DeviceEntryScreen
         headerTitle="Auto Refractometer "
@@ -240,25 +250,8 @@ const RemidioQRScanner = ({ onBack }: RemidioQRScannerProps) => {
         description="We’ve detected your Auto Refractometer. Please allow camera access and scan the QR code on the device."
         buttonText="Allow Camera"
         onBackPress={handleBack}
-        onButtonPress={() => setShowScanner(true)}
+        onButtonPress={() => void handleAllowCamera()}
       />
-    );
-  }
-  if (!hasPermission) {
-    return (
-      <View style={styles.deviceWrap}>
-        <View style={styles.headerShell}>
-          <SafeAreaView edges={['top']} style={styles.headerSafe}>
-            <PreventiveHealthHeader
-              title="Eye Scan — REMIDIO"
-              showBack
-              onBackPress={handleBack}
-            />
-          </SafeAreaView>
-        </View>
-
-        <Button title="Allow Camera" onPress={requestPermission} />
-      </View>
     );
   }
 

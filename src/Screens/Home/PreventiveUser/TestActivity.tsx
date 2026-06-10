@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -28,6 +28,7 @@ import PreventiveHealthHeader from './PreventiveHealthHeader';
 import { COLORS } from '../../../Constants/theme';
 import type { RootStackParamList } from '../../../navigation/types';
 import CustomPopup from '../Components/CustomPopup';
+import ReportPdfViewer from '../../../Components/ReportPdfViewer/ReportPdfViewer';
 import {
   formatLabSlotRange,
   formatLocalYmd,
@@ -40,9 +41,7 @@ import {
   type LabPatientRecord,
   type RawDeviceItem,
 } from './PreventiveHealthAPI';
-import axiosInstance, { isLabWorkerApiPath } from '../../../api/axiosInstance';
-import axios from 'axios';
-import { BASE_URL } from '../../../api/apiConfig';
+import axiosInstance from '../../../api/axiosInstance';
 import { pickBackendDeviceByTestName } from '../../../Utils/pickBackendDeviceByTestName';
 import { applyLabIotPerformTestNavigation } from '../../../Utils/labIotPerformTest';
 
@@ -219,16 +218,6 @@ function UpcomingStyleTestCard({
 const TestActivity: React.FC = () => {
   const navigation = useNavigation<TestActivityNav>();
   const route = useRoute<RouteProp<RootStackParamList, 'TestActivity'>>();
-  const WebView = useMemo(() => {
-    try {
-      // Important: don't require at module scope, or RN will crash if the native module
-      // hasn't been rebuilt/linked yet (common after adding dependency).
-      return require('react-native-webview').default as React.ComponentType<any>;
-    } catch (e) {
-      console.log('[report] WebView module not available:', e);
-      return null;
-    }
-  }, []);
   const [activeTab, setActiveTab] = useState<LabPatientFilter>(() => {
     const t = route.params?.initialTab;
     if (t === 'upcoming' || t === 'completed' || t === 'pending' || t === 'missed') {
@@ -241,10 +230,12 @@ const TestActivity: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [reportVisible, setReportVisible] = useState(false);
   const [reportUrl, setReportUrl] = useState<string>('');
+  const [reportBookingId, setReportBookingId] = useState<string>('');
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState<string>('');
   const [reportNonce, setReportNonce] = useState(0);
   const [viewerLoading, setViewerLoading] = useState(false);
+  const openReportSeqRef = useRef(0);
   const [deviceUnavailablePopupVisible, setDeviceUnavailablePopupVisible] = useState(false);
   const [deviceUnavailablePopupMessage, setDeviceUnavailablePopupMessage] = useState('');
 
@@ -399,8 +390,10 @@ const TestActivity: React.FC = () => {
   );
 
   const closeReport = useCallback(() => {
+    openReportSeqRef.current += 1;
     setReportVisible(false);
     setReportUrl('');
+    setReportBookingId('');
     setReportError('');
     setReportLoading(false);
     setViewerLoading(false);
@@ -409,34 +402,21 @@ const TestActivity: React.FC = () => {
   const openReportByBookingId = useCallback(async (bookingId: string | undefined | null) => {
     const id = String(bookingId ?? '').trim();
     if (!id) return;
+    const seq = ++openReportSeqRef.current;
     try {
       setReportError('');
       setReportLoading(true);
       setViewerLoading(true);
       setReportUrl('');
-      // Force WebView remount + bypass cache on re-open for same report.
+      setReportBookingId(id);
+      // Force PDF viewer remount + bypass cache on re-open for same report.
       setReportNonce(n => n + 1);
       setReportVisible(true);
       // No leading `/` — axios merges with baseURL; a leading `/` drops `/api/v1` and returns 404.
       const path = `reports/by-booking/${id}`;
-      const resolvedUrl = axios.getUri({
-        method: 'get',
-        baseURL: axiosInstance.defaults.baseURL,
-        url: path,
-      });
-      console.log('[report] booking_id:', id);
-      console.log('[report] path (relative to baseURL):', path);
-      console.log('[report] axiosInstance.defaults.baseURL:', axiosInstance.defaults.baseURL);
-      console.log('[report] apiConfig.BASE_URL:', BASE_URL);
-      console.log('[report] resolved absolute GET URL:', resolvedUrl);
-      console.log(
-        '[report] axios will send lab-worker JWT:',
-        isLabWorkerApiPath(path),
-        '(must be true for /reports/* — patient token often gets "Report not found")',
-      );
       const res = await axiosInstance.get<ReportByBookingResponse>(path);
-      console.log('[report] status:', res.status);
-      console.log('[report] body:', res.data);
+      if (seq !== openReportSeqRef.current) return;
+
       if (!res.data?.success) {
         throw new Error(res.data?.message || 'Failed to load report');
       }
@@ -444,19 +424,15 @@ const TestActivity: React.FC = () => {
       if (!url) {
         throw new Error('Report URL not available');
       }
-      console.log('[report] report_url:', url);
       setReportUrl(url);
     } catch (e) {
-      const err = e as Error & { status?: number; responseData?: unknown };
-      console.log('[report] request failed — diagnostics:', {
-        message: err?.message,
-        httpStatus: err?.status,
-        responseBody: err?.responseData,
-      });
+      if (seq !== openReportSeqRef.current) return;
       const msg = e instanceof Error ? e.message : 'Failed to load report';
       setReportError(msg);
     } finally {
-      setReportLoading(false);
+      if (seq === openReportSeqRef.current) {
+        setReportLoading(false);
+      }
     }
   }, []);
 
@@ -551,7 +527,6 @@ const TestActivity: React.FC = () => {
       }
 
       const nameForMsg = picked.deviceName ?? labPatientTestLabel(p);
-      console.log('[TestActivity] device unavailable for:', nameForMsg);
       setDeviceUnavailablePopupMessage(`No device available for this ${nameForMsg}`);
       setDeviceUnavailablePopupVisible(true);
     },
@@ -617,10 +592,7 @@ const TestActivity: React.FC = () => {
                   testName={labPatientTestLabel(p)}
                   location={labPatientLocationLabel(p)}
                   onSeeDetails={() => goTestDetails(p)}
-                  onViewReport={() => {
-                    console.log('View Report booking_id:', p.booking_id);
-                    openReportByBookingId(p.booking_id);
-                  }}
+                  onViewReport={() => openReportByBookingId(p.booking_id)}
                 />
               ))
             ) : activeTab === 'missed' ? (
@@ -705,66 +677,33 @@ const TestActivity: React.FC = () => {
               </Pressable>
             </View>
           ) : reportUrl ? (
-            WebView ? (
-              <View style={styles.reportViewerShell}>
-                <WebView
-                  key={`report-${reportNonce}`}
-                  source={{
-                    uri:
-                      Platform.OS === 'android'
-                        ? `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(
-                            reportUrl,
-                          )}&_=${reportNonce}`
-                        : `${reportUrl}${reportUrl.includes('?') ? '&' : '?'}_=${reportNonce}`,
-                  }}
-                  originWhitelist={['*']}
-                  javaScriptEnabled
-                  domStorageEnabled
-                  startInLoadingState
-                  incognito
-                  cacheEnabled={false}
-                  onLoadStart={() => setViewerLoading(true)}
-                  onLoadEnd={() => setViewerLoading(false)}
-                  onError={(e: any) => {
-                    console.log('[report] WebView error:', e?.nativeEvent);
-                    setViewerLoading(false);
-                    setReportError('Something went wrong while opening the report.');
-                  }}
-                  renderLoading={() => (
-                    <View style={styles.reportCenter}>
-                      <ActivityIndicator color={COLORS.WHITE} size="large" />
-                      <Text style={styles.reportHint}>Opening…</Text>
-                    </View>
-                  )}
-                />
-                {viewerLoading ? (
-                  <View style={styles.viewerLoadingOverlay} pointerEvents="none">
-                    <ActivityIndicator color={COLORS.WHITE} />
-                  </View>
-                ) : null}
-              </View>
-            ) : (
-              <View style={styles.reportCenter}>
-                <Text style={styles.reportErrorTitle}>Unable to open report</Text>
-                <Text style={styles.reportErrorMsg}>
-                  WebView native module is missing. Please rebuild the app, or open the report in the browser.
-                </Text>
-                <Pressable
-                  style={styles.reportRetryBtn}
-                  onPress={() => {
-                    console.log('[report] opening in browser:', reportUrl);
-                    Linking.openURL(reportUrl).catch(err =>
-                      console.log('[report] openURL failed:', err),
-                    );
-                  }}
-                >
-                  <Text style={styles.reportRetryText}>Open in browser</Text>
-                </Pressable>
-                <Pressable style={styles.reportRetryBtn} onPress={closeReport}>
-                  <Text style={styles.reportRetryText}>Close</Text>
-                </Pressable>
-              </View>
-            )
+            <ReportPdfViewer
+              reportUrl={reportUrl}
+              reportBookingId={reportBookingId}
+              reportNonce={reportNonce}
+              viewerLoading={viewerLoading}
+              showOpeningHint={false}
+              onViewerLoadingChange={setViewerLoading}
+              onViewerError={() =>
+                setReportError('Something went wrong while opening the report.')
+              }
+              onOpenInBrowser={() => {
+                Linking.openURL(reportUrl).catch(() => {
+                  /* noop */
+                });
+              }}
+              onClose={closeReport}
+              styles={{
+                reportViewerShell: styles.reportViewerShell,
+                viewerLoadingOverlay: styles.viewerLoadingOverlay,
+                reportCenter: styles.reportCenter,
+                reportHint: styles.reportHint,
+                reportErrorTitle: styles.reportErrorTitle,
+                reportErrorMsg: styles.reportErrorMsg,
+                reportRetryBtn: styles.reportRetryBtn,
+                reportRetryText: styles.reportRetryText,
+              }}
+            />
           ) : (
             <View style={styles.reportCenter}>
               <Text style={styles.reportErrorMsg}>Report URL not available.</Text>
@@ -1158,8 +1097,6 @@ const styles = StyleSheet.create({
   reportViewerShell: {
     flex: 1,
     backgroundColor: REPORT_BG,
-    paddingHorizontal: ms(10),
-    paddingVertical: vs(10),
   },
   viewerLoadingOverlay: {
     position: 'absolute',

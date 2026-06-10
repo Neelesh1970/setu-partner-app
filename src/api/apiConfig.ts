@@ -4,7 +4,7 @@
  */
 export const BASE_URL = 'https://staging.setuai.com/preventive-health/api/v1';
 // export const BASE_URL =
-//   'https://stranger-diversity-mrs-roommate.trycloudflare.com/api/v1';
+//   'https://constructed-bath-feature-revenues.trycloudflare.com/api/v1';
 
 // AUTH 7005 — registration uses a different host (see `registerAxiosInstance`).
 // export const REGISTER_BASE_URL = 'https://api.setuai.com/auth';

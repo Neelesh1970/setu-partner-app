@@ -201,22 +201,24 @@ const IdentityVerificationScreen: React.FC = () => {
   return (
     <>
       <StatusBar barStyle="light-content" backgroundColor="#1C39BB" />
-      <SafeAreaView style={styles.headerSafe}>
-        <PreventiveHealthHeader
-          title="Identity Verification"
-          rightSlot={
-            <TouchableWithoutFeedback onPress={onHeaderRefresh} hitSlop={10}>
-              <View style={styles.headerIconBtn}>
-                {headerChecking ? (
-                  <ActivityIndicator color="#FFF" size="small" />
-                ) : (
-                  <Ionicons name="refresh-outline" size={24} color="#FFF" />
-                )}
-              </View>
-            </TouchableWithoutFeedback>
-          }
-        />
-      </SafeAreaView>
+      <View style={styles.headerShell}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <PreventiveHealthHeader
+            title="Identity Verification"
+            rightSlot={
+              <TouchableWithoutFeedback onPress={onHeaderRefresh} hitSlop={10}>
+                <View style={styles.headerIconBtn}>
+                  {headerChecking ? (
+                    <ActivityIndicator color="#FFF" size="small" />
+                  ) : (
+                    <Ionicons name="refresh-outline" size={24} color="#FFF" />
+                  )}
+                </View>
+              </TouchableWithoutFeedback>
+            }
+          />
+        </SafeAreaView>
+      </View>
 
       <SafeAreaView style={styles.container}>
         <ScrollView
@@ -358,11 +360,14 @@ const UploadCard: React.FC<UploadCardProps> = ({ title, uploadedFile, onUpload }
 );
 
 const styles = StyleSheet.create({
-  headerSafe: {
+  headerShell: {
     backgroundColor: '#1C39BB',
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
     overflow: 'hidden',
+  },
+  headerSafe: {
+    backgroundColor: '#1C39BB',
   },
   container: {
     flex: 1,

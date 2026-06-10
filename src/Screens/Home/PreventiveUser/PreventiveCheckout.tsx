@@ -156,12 +156,14 @@ export default function PreventiveCheckout({ navigation }: any) {
       <StatusBar barStyle="light-content" backgroundColor={COLORS.headerBg} />
 
       {/* HEADER */}
-      <SafeAreaView style={styles.headerSafe}>
-        <PreventiveHealthHeader
-          title="Checkout"
-          onBackPress={() => navigation.goBack()}
-        />
-      </SafeAreaView>
+      <View style={styles.headerShell}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <PreventiveHealthHeader
+            title="Checkout"
+            onBackPress={() => navigation.goBack()}
+          />
+        </SafeAreaView>
+      </View>
 
       {/* BODY */}
       <SafeAreaView style={styles.body}>
@@ -234,11 +236,14 @@ export default function PreventiveCheckout({ navigation }: any) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
 
-  headerSafe: {
+  headerShell: {
     backgroundColor: COLORS.headerBg,
     borderBottomLeftRadius: ms(22),
     borderBottomRightRadius: ms(22),
     overflow: "hidden",
+  },
+  headerSafe: {
+    backgroundColor: COLORS.headerBg,
   },
 
   body: { flex: 1 },

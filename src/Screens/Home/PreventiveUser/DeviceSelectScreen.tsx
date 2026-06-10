@@ -161,10 +161,10 @@ const DeviceSelectScreen: React.FC = () => {
     if (!bookingId) return;
     setIsPdfLoading(true);
     try {
-      await axiosInstance.post('reports/payload/pdf', { bookingId });
-    } catch (err) {
-      const e = err as { message?: string };
-      console.warn('[DeviceSelect] PDF generation failed:', e?.message ?? err);
+      const pdfBody = { bookingId };
+      await axiosInstance.post('reports/payload/pdf', pdfBody);
+    } catch {
+      /* noop */
     } finally {
       setIsPdfLoading(false);
     }

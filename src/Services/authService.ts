@@ -94,11 +94,9 @@ export interface VerifyOtpResponse {
 export const sendRegistrationOtp = async (
   payload: RegisterPayload,
 ): Promise<SendOtpResponse> => {
-  console.log('[authService] sendRegistrationOtp request:', JSON.stringify(payload, null, 2));
   // NOTE: registration OTP for partner app must use main API base (/api/v1).
   // `BASE_URL` already includes `/api/v1`, so keep the path API-relative here.
   const { data } = await axiosInstance.post<SendOtpResponse>('/auth/register/send-otp', payload);
-  console.log('[authService] sendRegistrationOtp response:', JSON.stringify(data, null, 2));
   return data;
 };
 
@@ -281,25 +279,8 @@ function parseLoginVerifyOtpResponse(raw: unknown): VerifyOtpResponse {
 export const verifyLoginOtp = async (
   payload: VerifyOtpPayload,
 ): Promise<VerifyOtpResponse> => {
-  console.log('[verifyLoginOtp] POST /auth/otp/verify — request:', JSON.stringify(payload, null, 2));
   const { data } = await axiosInstance.post<unknown>('/auth/otp/verify', payload);
-  console.log('[verifyLoginOtp] POST /auth/otp/verify — raw response:', JSON.stringify(data, null, 2));
   const parsed = parseLoginVerifyOtpResponse(data);
-  console.log(
-    'Labworker information',
-    JSON.stringify(
-      {
-        success: parsed.success,
-        message: parsed.message,
-        provider: parsed.provider,
-        user: parsed.user,
-        token: parsed.token,
-        refreshToken: parsed.refreshToken,
-      },
-      null,
-      2,
-    ),
-  );
   return parsed;
 };
 
@@ -345,23 +326,14 @@ export interface CreateOrderResponse {
 
 
 export const createRegistrationOrder = async (payload: CreateOrderPayload) => {
-  console.log('🟡 [STEP 1] createRegistrationOrder CALLED');
-  console.log('➡️ PAYLOAD:', JSON.stringify(payload, null, 2));
-
   try {
     const { data } = await registerAxiosInstance.post(
       '/register/create-order',
       payload,
     );
 
-    console.log('🟢 [STEP 2] ORDER CREATED SUCCESS');
-    console.log('➡️ RESPONSE:', JSON.stringify(data, null, 2));
-
     return data;
   } catch (error: any) {
-    console.log('🔴 [STEP 2 ERROR] ORDER CREATION FAILED');
-    console.log('➡️ MESSAGE:', error?.message);
-    console.log('➡️ RESPONSE:', JSON.stringify(error?.response?.data, null, 2));
     throw error;
   }
 };
@@ -554,17 +526,6 @@ export const submitIdentityVerification = async (
       type: payload.technician_certificate.type,
     } as any);
   }
-
-  console.log('[identity-verification] POST multipart/form-data', {
-    url: `${BASE_URL}/identity-verification`,
-    id_proof_type: payload.id_proof_type,
-    id_number: payload.id_number,
-    document: {
-      name: payload.document.name,
-      type: payload.document.type,
-      uri: payload.document.uri,
-    },
-  });
 
   const { data } = await axiosInstance.post<IdentityVerificationResponse>(
     '/identity-verification',

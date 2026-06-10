@@ -237,19 +237,21 @@ export default function PreventiveHealth({ navigation }: any) {
     <>
       <StatusBar barStyle="light-content" backgroundColor="#1C39BB" />
 
-      <SafeAreaView style={styles.headerSafe}>
-        <PreventiveHealthHeader
-          title="Select and perform test"
-          onBackPress={() => navigation.navigate("Home")}
-          showRight1
-          rightIcon1="receipt-outline"
-          onRightPress1={() => navigation.navigate("MyBookings")}
-          showRight2
-          rightIcon2="cart-outline"
-          cartCount={cartCount}
-          onRightPress2={() => navigation.navigate("PreventiveCart")}
-        />
-      </SafeAreaView>
+      <View style={styles.headerShell}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <PreventiveHealthHeader
+            title="Select and perform test"
+            onBackPress={() => navigation.navigate("Home")}
+            showRight1
+            rightIcon1="receipt-outline"
+            onRightPress1={() => navigation.navigate("MyBookings")}
+            showRight2
+            rightIcon2="cart-outline"
+            cartCount={cartCount}
+            onRightPress2={() => navigation.navigate("PreventiveCart")}
+          />
+        </SafeAreaView>
+      </View>
 
       <SafeAreaView style={styles.bodySafe}>
         {loading ? (
@@ -420,11 +422,14 @@ export default function PreventiveHealth({ navigation }: any) {
 
 
 const styles = StyleSheet.create({
-  headerSafe: {
+  headerShell: {
     backgroundColor: "#2563EB",
     borderBottomLeftRadius: 18,
     borderBottomRightRadius: 18,
     overflow: "hidden",
+  },
+  headerSafe: {
+    backgroundColor: "#2563EB",
   },
   bodySafe: {
     flex: 1,

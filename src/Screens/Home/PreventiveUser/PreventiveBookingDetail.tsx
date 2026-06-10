@@ -504,12 +504,14 @@ export default function PreventiveBookingDetail({ navigation }: any) {
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.headerBg} />
 
-      <SafeAreaView style={styles.headerSafe}>
-        <PreventiveHealthHeader
-          title="Booking details"
-          onBackPress={() => navigation.goBack()}
-        />
-      </SafeAreaView>
+      <View style={styles.headerShell}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <PreventiveHealthHeader
+            title="Booking details"
+            onBackPress={() => navigation.goBack()}
+          />
+        </SafeAreaView>
+      </View>
 
       <SafeAreaView style={styles.bodySafe}>
         <ScrollView
@@ -595,11 +597,14 @@ export default function PreventiveBookingDetail({ navigation }: any) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
-  headerSafe: {
+  headerShell: {
     backgroundColor: COLORS.headerBg,
     borderBottomLeftRadius: ms(18),
     borderBottomRightRadius: ms(18),
     overflow: "hidden",
+  },
+  headerSafe: {
+    backgroundColor: COLORS.headerBg,
   },
   bodySafe: { flex: 1, backgroundColor: COLORS.bg },
   scrollContent: {

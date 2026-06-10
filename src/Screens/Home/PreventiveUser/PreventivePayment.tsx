@@ -389,12 +389,14 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.headerBg} />
 
-      <SafeAreaView style={styles.headerSafe}>
-        <PreventiveHealthHeader
-          title="Payment"
-          onBackPress={() => navigation.goBack()}
-        />
-      </SafeAreaView>
+      <View style={styles.headerShell}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <PreventiveHealthHeader
+            title="Payment"
+            onBackPress={() => navigation.goBack()}
+          />
+        </SafeAreaView>
+      </View>
 
       <SafeAreaView style={styles.body}>
         <ScrollView
@@ -487,11 +489,14 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
 
-  headerSafe: {
+  headerShell: {
     backgroundColor: COLORS.headerBg,
     borderBottomLeftRadius: ms(22),
     borderBottomRightRadius: ms(22),
     overflow: "hidden",
+  },
+  headerSafe: {
+    backgroundColor: COLORS.headerBg,
   },
 
   body: { flex: 1 },

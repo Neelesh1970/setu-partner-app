@@ -59,12 +59,14 @@ export default function CashPaymentReceive({ navigation, route }: Props): React.
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={HEADER_BG} />
 
-      <SafeAreaView style={styles.headerSafe} edges={['top']}>
-        <PreventiveHealthHeader
-          title="Collect Cash"
-          onBackPress={() => navigation.goBack()}
-        />
-      </SafeAreaView>
+      <View style={styles.headerShell}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <PreventiveHealthHeader
+            title="Collect Cash"
+            onBackPress={() => navigation.goBack()}
+          />
+        </SafeAreaView>
+      </View>
 
       <View style={styles.body}>
         <View style={styles.centerContent}>
@@ -116,7 +118,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: BG,
   },
-  headerSafe: {
+  headerShell: {
     backgroundColor: HEADER_BG,
     borderBottomLeftRadius: ms(22),
     borderBottomRightRadius: ms(22),
@@ -130,6 +132,9 @@ const styles = StyleSheet.create({
       },
       android: { elevation: 6 },
     }),
+  },
+  headerSafe: {
+    backgroundColor: HEADER_BG,
   },
   body: {
     flex: 1,

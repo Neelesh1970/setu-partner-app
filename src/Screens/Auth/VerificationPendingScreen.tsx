@@ -83,9 +83,11 @@ const VerificationPendingScreen: React.FC = () => {
   return (
     <>
       <StatusBar barStyle="light-content" backgroundColor="#1C39BB" />
-      <SafeAreaView style={styles.headerSafe}>
-        <PreventiveHealthHeader title="Verification Pending" />
-      </SafeAreaView>
+      <View style={styles.headerShell}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <PreventiveHealthHeader title="Verification Pending" />
+        </SafeAreaView>
+      </View>
 
       <SafeAreaView style={styles.container}>
         <ScrollView
@@ -141,11 +143,14 @@ const VerificationPendingScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  headerSafe: {
+  headerShell: {
     backgroundColor: '#1C39BB',
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
     overflow: 'hidden',
+  },
+  headerSafe: {
+    backgroundColor: '#1C39BB',
   },
   container: {
     flex: 1,

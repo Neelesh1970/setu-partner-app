@@ -20,6 +20,11 @@ import { postBloodPressureResult } from '../../api/iotDeviceResults';
 import axiosInstance from '../../api/axiosInstance';
 import { BACKEND_NIBP_DEVICE_ID } from '../../Utils/labIotPerformTest';
 import { setPendingCompletedBookingItemId } from '../../Utils/multiDeviceSession';
+import {
+  isBleDeviceConnected,
+  isBleOperationCancelled,
+  isExpectedBleDisconnectError,
+} from '../../Utils/bleErrorHandling';
 
 const globalBuffer = globalThis as typeof globalThis & {
   Buffer?: typeof Buffer;
@@ -121,41 +126,6 @@ type BpResultSnapshot = {
   pulse: number;
 };
 
-function serializeBleDevice(device: Device): Record<string, unknown> {
-  return {
-    id: device.id,
-    name: device.name ?? null,
-    localName: device.localName ?? null,
-    rssi: device.rssi ?? null,
-    mtu: device.mtu ?? null,
-    serviceUUIDs: device.serviceUUIDs ?? null,
-    solicitedServiceUUIDs: device.solicitedServiceUUIDs ?? null,
-    overflowServiceUUIDs: device.overflowServiceUUIDs ?? null,
-    manufacturerData: device.manufacturerData ?? null,
-    serviceData: device.serviceData ?? null,
-    txPowerLevel: device.txPowerLevel ?? null,
-    isConnectable: device.isConnectable ?? null,
-  };
-}
-
-function logNavigationParams(params: BloodPressureRouteParams | undefined): void {
-  const p = params ?? {};
-  console.log(
-    '[BloodPressure] navigation params:',
-    JSON.stringify(
-      {
-        booking_id: p.bookingId ?? null,
-        booking_item_id: p.bookingItemId ?? null,
-        deviceId: p.deviceId ?? null,
-        deviceName: p.deviceName ?? null,
-        allRouteParams: p,
-      },
-      null,
-      2,
-    ),
-  );
-}
-
 export default function BloodPressure({
   navigation,
 }: BloodPressureScreenProps) {
@@ -166,22 +136,6 @@ export default function BloodPressure({
   const bookingId = routeParams.bookingId ?? '';
   const routeDeviceId = routeParams.deviceId ?? null;
   const routeIsMultiDevice = routeParams.isMultiDevice ?? false;
-
-  const logBpResultPayload = (systolic: number, diastolic: number) => {
-    console.log(
-      '[BloodPressure] result payload:',
-      JSON.stringify(
-        {
-          systolic,
-          diastolic,
-          booking_id: bookingId || null,
-          ph_booking_item_id: bookingItemId || null,
-        },
-        null,
-        4,
-      ),
-    );
-  };
 
   const managerRef = useRef<BleManager | null>(null);
   if (!managerRef.current) {
@@ -278,6 +232,7 @@ export default function BloodPressure({
 
     if (routeIsMultiDevice && bookingItemId) {
       setPendingCompletedBookingItemId(bookingItemId);
+      await teardownBleConnection();
       navigation.goBack();
       return;
     }
@@ -300,7 +255,8 @@ export default function BloodPressure({
 
     setIsPdfLoading(true);
     try {
-      await axiosInstance.post('reports/payload/pdf', { bookingId });
+      const pdfBody = { bookingId };
+      await axiosInstance.post('reports/payload/pdf', pdfBody);
     } catch {
       // proceed to Reports regardless
     } finally {
@@ -308,6 +264,11 @@ export default function BloodPressure({
     }
 
     setPdfModalVisible(false);
+    try {
+      await teardownBleConnection();
+    } catch {
+      /* proceed to Reports even if BLE teardown fails */
+    }
     navigation.replace('Reports', { bookingId: bookingId ?? undefined });
   }, [bookingId, navigation]);
 
@@ -320,10 +281,6 @@ export default function BloodPressure({
     setPdfModalVisible(false);
     setSavedResult(null);
   }, []);
-
-  useEffect(() => {
-    logNavigationParams(route.params as BloodPressureRouteParams | undefined);
-  }, [route.params]);
 
   useEffect(() => {
     let mounted = true;
@@ -339,8 +296,6 @@ export default function BloodPressure({
 
     return () => {
       mounted = false;
-      stopScan();
-      removeMonitors();
 
       try {
         sub.remove();
@@ -348,13 +303,9 @@ export default function BloodPressure({
         /* ignore */
       }
 
-      try {
-        void connectedRef.current?.cancelConnection?.();
-      } catch {
-        /* ignore */
-      }
-
-      connectedRef.current = null;
+      void teardownBleConnection().catch(() => {
+        /* BLE teardown races on unmount — swallow rejections */
+      });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- BleManager lifecycle: run once on mount
   }, []);
@@ -401,7 +352,6 @@ export default function BloodPressure({
 
     manager.startDeviceScan(null, null, (error, device) => {
       if (error) {
-        console.log('SCAN ERROR:', error);
         setStatus(error.message || 'Scan error');
         setIsScanning(false);
         return;
@@ -421,8 +371,6 @@ export default function BloodPressure({
 
       if (!isOmron) return;
 
-      const bleSnapshot = serializeBleDevice(device);
-
       setDevices(prev => {
         const exists = prev.find(x => x.id === device.id);
 
@@ -433,11 +381,6 @@ export default function BloodPressure({
               : x,
           );
         }
-
-        console.log(
-          '[BloodPressure] BLE device discovered:',
-          JSON.stringify(bleSnapshot, null, 2),
-        );
 
         return [
           ...prev,
@@ -454,28 +397,6 @@ export default function BloodPressure({
     scanTimerRef.current = setTimeout(() => {
       stopScan();
       setStatus('Scan finished. Select device to connect.');
-      setDevices(prev => {
-        console.log(
-          '[BloodPressure] scan finished — total devices:',
-          prev.length,
-        );
-        prev.forEach((item, index) => {
-          console.log(
-            `[BloodPressure] scanned device [${index}]:`,
-            JSON.stringify(
-              {
-                id: item.id,
-                name: item.name,
-                rssi: item.rssi ?? null,
-                ble: serializeBleDevice(item.deviceRef),
-              },
-              null,
-              2,
-            ),
-          );
-        });
-        return prev;
-      });
     }, 12000);
   }
 
@@ -524,29 +445,46 @@ export default function BloodPressure({
     if (message) setStatus(message);
   }
 
+  async function teardownBleConnection(): Promise<void> {
+    stopScan();
+    removeMonitors();
+
+    liveModeRef.current = false;
+    liveMeasurementResolverRef.current = null;
+
+    if (packetPromiseRef.current) {
+      const resolver = packetPromiseRef.current;
+      packetPromiseRef.current = null;
+      resolver.reject(new Error('BLE session ended'));
+    }
+
+    const device = connectedRef.current;
+    connectedRef.current = null;
+    writeCharRef.current = null;
+    connectingRef.current = false;
+    rxBufferRef.current = Buffer.alloc(0);
+    setConnectedName('');
+
+    if (!device) {
+      return;
+    }
+
+    try {
+      if (await isBleDeviceConnected(device)) {
+        await device.cancelConnection();
+      }
+    } catch (error) {
+      if (!isExpectedBleDisconnectError(error)) {
+        /* unexpected teardown error */
+      }
+    }
+  }
+
   async function connectScannedDevice(item: ScannedDeviceItem) {
     if (!item?.id) {
       setStatus('Invalid device');
       return;
     }
-
-    console.log(
-      '[BloodPressure] connect selected device:',
-      JSON.stringify(
-        {
-          booking_id: bookingId || null,
-          booking_item_id: bookingItemId || null,
-          selected: {
-            id: item.id,
-            name: item.name,
-            rssi: item.rssi ?? null,
-          },
-          ble: serializeBleDevice(item.deviceRef),
-        },
-        null,
-        2,
-      ),
-    );
 
     await connectDeviceById(item.id, item.name);
   }
@@ -573,8 +511,6 @@ export default function BloodPressure({
         await delay(1000);
       }
 
-      console.log('CONNECT: attempting to connect to', deviceId);
-
       const device = await manager.connectToDevice(deviceId, {
         autoConnect: false,
         requestMTU: 185,
@@ -582,29 +518,18 @@ export default function BloodPressure({
       });
 
       connectedRef.current = device;
-      const mtu = (device as Device & { mtu?: number }).mtu;
-      console.log('CONNECT: connected. name=', device.name, '| mtu=', mtu ?? 'unknown');
       setConnectedName(device.name || fallbackName || 'Omron BP Monitor');
 
       setStatus('Discovering services...');
       await device.discoverAllServicesAndCharacteristics();
-      console.log('CONNECT: service discovery done');
       await delay(1000);
 
-      await printServices(device);
-
-      await setupStandardBloodPressureLive(device).catch(e => {
-        console.log(
-          'STANDARD BP LIVE NOT AVAILABLE:',
-          e instanceof Error ? e.message : String(e),
-        );
+      await setupStandardBloodPressureLive(device).catch(() => {
+        /* noop */
       });
 
-      await setupOmronNotifications(device).catch(e => {
-        console.log(
-          'OMRON FE4A NOT AVAILABLE:',
-          e instanceof Error ? e.message : String(e),
-        );
+      await setupOmronNotifications(device).catch(() => {
+        /* noop */
       });
 
       // Pre-cache the write characteristic NOW, while notifications are active.
@@ -612,22 +537,14 @@ export default function BloodPressure({
       // reset CCCD subscriptions on Android and cause RX timeouts.
       try {
         writeCharRef.current = await getWriteChar(device);
-        console.log(
-          'CONNECT: write char cached:',
-          writeCharRef.current.uuid,
-          '| withResponse=', writeCharRef.current.isWritableWithResponse,
-          '| withoutResponse=', writeCharRef.current.isWritableWithoutResponse,
-        );
-      } catch (e) {
-        console.log('CONNECT: failed to cache write char:', e instanceof Error ? e.message : String(e));
+      } catch {
+        /* noop */
       }
 
       // Give the CCCD subscription time to settle before first TX.
-      console.log('CONNECT: waiting 800ms before first TX...');
       await delay(800);
 
       const isNowConnected = await device.isConnected().catch(() => false);
-      console.log('CONNECT: isConnected before first TX =', isNowConnected);
 
       if (!isNowConnected) {
         throw new Error('Device disconnected before transmission could start');
@@ -639,43 +556,27 @@ export default function BloodPressure({
 
       try {
         setStatus('Reading stored records...');
-        console.log(
-          'CONNECT: packetPromiseRef before startTransmission =',
-          packetPromiseRef.current !== null ? 'set' : 'null',
-        );
 
         await startTransmission();
 
         const allRecords = await readHem7141T1Records();
 
-        await endTransmission().catch(e =>
-          console.log('END TRANSMISSION ERROR:', e),
-        );
-
-        console.log('FINAL EEPROM RECORDS COUNT:', allRecords.length);
-        console.log('FINAL EEPROM RECORDS:', allRecords);
+        await endTransmission().catch(() => {
+          /* noop */
+        });
 
         const sortedRecords = sortOmronRecords(allRecords);
-
-        console.log(
-          'SORTED RECORD NOS:',
-          sortedRecords.map(r => r.recordNo),
-        );
-        console.log('SORTED RECORDS:', sortedRecords);
 
         setRecords(sortedRecords);
 
         if (sortedRecords.length > 0) {
           const latest = sortedRecords[0];
 
-          console.log('LATEST RECORD:', latest);
-
           setBpValue({
             sys: latest.sys,
             dia: latest.dia,
             pulse: latest.bpm ?? latest.pulse ?? null,
           });
-          logBpResultPayload(latest.sys, latest.dia);
 
           setStatus(
             `History loaded: ${sortedRecords.length}. Latest: ${latest.sys}/${
@@ -685,19 +586,15 @@ export default function BloodPressure({
         } else {
           setStatus('No history found. Start BP measurement for live.');
         }
-      } catch (historyErr) {
-        console.log('EEPROM HISTORY ERROR:', historyErr);
+      } catch {
         setStatus('History failed. Live mode still active.');
       }
 
       livePromise.then(live => {
         if (!live) {
-          console.log('LIVE TIMEOUT: no live BP received');
           setStatus('No live BP received. Try measuring again.');
           return;
         }
-
-        console.log('LIVE FINAL RESULT:', live);
 
         setBpValue({
           sys: live.sys,
@@ -727,33 +624,12 @@ export default function BloodPressure({
         );
       });
     } catch (e) {
-      console.log('CONNECT ERROR:', e);
       Alert.alert('Omron Error', e instanceof Error ? e.message : String(e));
       clearConnectionState(
         'Connection failed. Pair device in Android Bluetooth first.',
       );
     } finally {
       connectingRef.current = false;
-    }
-  }
-
-  async function printServices(device: Device) {
-    const services = await device.services();
-
-    for (const s of services) {
-      console.log('SERVICE:', s.uuid);
-
-      const chars = await s.characteristics();
-      for (const c of chars) {
-        console.log('CHAR:', {
-          service: s.uuid,
-          char: c.uuid,
-          isNotifiable: c.isNotifiable,
-          isIndicatable: c.isIndicatable,
-          isWritableWithResponse: c.isWritableWithResponse,
-          isWritableWithoutResponse: c.isWritableWithoutResponse,
-        });
-      }
     }
   }
 
@@ -782,20 +658,11 @@ export default function BloodPressure({
       throw new Error('BP Measurement 2A35 is not notifiable');
     }
 
-    console.log('SUBSCRIBE STANDARD BP LIVE:', bpChar.uuid);
-
     const sub = bpChar.monitor((error, characteristic) => {
       if (error) {
-        const msg = String(error.message || '').toLowerCase();
-        if (
-          msg.includes('cancelled') ||
-          msg.includes('disconnected') ||
-          msg.includes('not connected')
-        ) {
+        if (isBleOperationCancelled(error) || isExpectedBleDisconnectError(error)) {
           return;
         }
-
-        console.log('STANDARD BP NOTIFY ERROR:', error.message);
         return;
       }
 
@@ -804,13 +671,11 @@ export default function BloodPressure({
       const bytes = Buffer.from(characteristic.value, 'base64');
       const hex = bytes.toString('hex').toUpperCase();
 
-      console.log('STANDARD BP LIVE HEX:', hex);
       setLastPacketHex(hex);
 
       const parsed = parseStandardBpMeasurement(bytes);
 
       if (!parsed) {
-        console.log('STANDARD BP PARSE FAILED');
         return;
       }
 
@@ -827,7 +692,6 @@ export default function BloodPressure({
         rawHex: hex,
       };
 
-      console.log('STANDARD BP LIVE RESULT:', liveRecord);
       publishLiveRecord(liveRecord);
     });
 
@@ -939,48 +803,20 @@ export default function BloodPressure({
       throw new Error('HEM data characteristic is not notifiable');
     }
 
-    console.log('SUBSCRIBE OMRON FE4A: subscribing to', notifyChar.uuid);
-
-    let rxCallCount = 0;
-
     const sub = notifyChar.monitor((error, characteristic) => {
       if (error) {
-        const msg = String(
-          error.message ||
-            ('reason' in error ? String(error.reason) : '') ||
-            '',
-        ).toLowerCase();
-
-        if (
-          msg.includes('cancelled') ||
-          msg.includes('disconnected') ||
-          msg.includes('not connected')
-        ) {
-          console.log('OMRON NOTIFY: silenced error (disconnect/cancel):', msg);
+        if (isBleOperationCancelled(error) || isExpectedBleDisconnectError(error)) {
           return;
         }
-
-        console.log('OMRON NOTIFY ERROR:', error);
         return;
       }
 
-      rxCallCount += 1;
-      console.log('OMRON NOTIFY: RX #' + rxCallCount + ' fired');
-
       if (!characteristic?.value) {
-        console.log('OMRON NOTIFY: characteristic.value is empty');
         return;
       }
 
       const bytes = Buffer.from(characteristic.value, 'base64');
       const hex = bytes.toString('hex').toUpperCase();
-
-      console.log('RX CHUNK:', hex);
-      console.log('RX CHUNK LENGTH:', bytes.length);
-      console.log(
-        'RX CHUNK: packetPromiseRef=', packetPromiseRef.current !== null ? 'set' : 'null',
-        '| liveMode=', liveModeRef.current,
-      );
 
       setLastPacketHex(hex);
 
@@ -990,12 +826,9 @@ export default function BloodPressure({
 
       if (packetPromiseRef.current) {
         handleRxPacket(bytes);
-      } else {
-        console.log('RX ignored for command parser: no pending promise');
       }
     });
 
-    console.log('SUBSCRIBE OMRON FE4A: monitor registered');
     monitorSubRef.current.push(sub);
   }
 
@@ -1004,12 +837,9 @@ export default function BloodPressure({
 
     const hex = bytes.toString('hex').toUpperCase();
 
-    console.log('LIVE RX CHECK:', hex);
-
     const found = findBpInPacket(bytes);
 
     if (!found) {
-      console.log('LIVE BP NOT FOUND IN THIS PACKET');
       return;
     }
 
@@ -1026,8 +856,6 @@ export default function BloodPressure({
       rawHex: hex,
     };
 
-    console.log('LIVE BP FOUND:', liveRecord);
-
     publishLiveRecord(liveRecord);
   }
 
@@ -1037,7 +865,6 @@ export default function BloodPressure({
       dia: liveRecord.dia,
       pulse: liveRecord.bpm ?? null,
     });
-    logBpResultPayload(liveRecord.sys, liveRecord.dia);
 
     setRecords(prev => {
       const exists = prev.some(r => r.rawHex === liveRecord.rawHex);
@@ -1066,7 +893,6 @@ export default function BloodPressure({
       hex.startsWith('4081') ||
       hex.startsWith('088F')
     ) {
-      console.log('LIVE SKIP EEPROM PACKET:', hex);
       return null;
     }
 
@@ -1081,10 +907,7 @@ export default function BloodPressure({
       ];
 
       for (const c of candidates) {
-        console.log('LIVE CANDIDATE:', c);
-
         if (isValidBP(c.sys, c.dia, c.bpm)) {
-          console.log('LIVE VALID CANDIDATE:', c);
           return c;
         }
       }
@@ -1113,14 +936,7 @@ export default function BloodPressure({
     try {
       const packetSize = bytes[0];
 
-      console.log('HANDLE RX PACKET SIZE:', packetSize);
-      console.log('HANDLE RX RAW:', bytes.toString('hex').toUpperCase());
-
       if (!packetSize || bytes.length < packetSize) {
-        console.log(
-          'RX incomplete packet:',
-          bytes.toString('hex').toUpperCase(),
-        );
         return;
       }
 
@@ -1129,11 +945,8 @@ export default function BloodPressure({
       let xorCrc = 0;
       for (const b of packet) xorCrc ^= b;
 
-      console.log('RX XOR CRC:', xorCrc);
-
       if (xorCrc !== 0) {
         const err = new Error(`CRC failed: ${xorCrc}`);
-        console.log('RX CRC ERROR:', err.message);
 
         if (packetPromiseRef.current) {
           const resolver = packetPromiseRef.current;
@@ -1146,24 +959,12 @@ export default function BloodPressure({
 
       const parsed = parseOmronResponsePacket(packet);
 
-      console.log('PARSED RX PACKET:', {
-        packetType: parsed.packetType,
-        address: parsed.address.toString(16),
-        dataLength: parsed.data.length,
-        dataHex: parsed.data.toString('hex').toUpperCase(),
-        rawHex: parsed.rawHex,
-      });
-
       if (packetPromiseRef.current) {
         const resolver = packetPromiseRef.current;
         packetPromiseRef.current = null;
         resolver.resolve(parsed);
-      } else {
-        console.log('RX received but no pending promise');
       }
     } catch (e) {
-      console.log('HANDLE RX ERROR:', e);
-
       if (packetPromiseRef.current) {
         const resolver = packetPromiseRef.current;
         packetPromiseRef.current = null;
@@ -1201,8 +1002,6 @@ export default function BloodPressure({
     const command = Buffer.from('0800000000100018', 'hex');
     const packet = await writeAndWaitPacket(command);
 
-    console.log('START RESPONSE:', packet);
-
     if (packet.packetType !== '8000') {
       throw new Error(`Invalid start response: ${packet.packetType}`);
     }
@@ -1211,8 +1010,6 @@ export default function BloodPressure({
   async function endTransmission() {
     const command = Buffer.from('080f000000000007', 'hex');
     const packet = await writeAndWaitPacket(command);
-
-    console.log('END RESPONSE:', packet);
 
     if (packet.packetType !== '8f00') {
       throw new Error(`Invalid end response: ${packet.packetType}`);
@@ -1237,12 +1034,6 @@ export default function BloodPressure({
       const totalBytes = count * RECORD_BYTE_SIZE;
       let offset = 0;
 
-      console.log(
-        `READ AREA ${userIndex + 1}: start=0x${startAddress
-          .toString(16)
-          .toUpperCase()}, totalBytes=${totalBytes}`,
-      );
-
       // Store all chunks first, then merge with overlap recovery
       const allChunks: Buffer[] = [];
 
@@ -1251,13 +1042,6 @@ export default function BloodPressure({
         const readSize = Math.min(TRANSMISSION_BLOCK_SIZE, totalBytes - offset);
 
         const block = await readBlockEeprom(address, readSize);
-
-        console.log(
-          `EEPROM BLOCK ${userIndex + 1} 0x${address
-            .toString(16)
-            .toUpperCase()}:`,
-          block.toString('hex').toUpperCase(),
-        );
 
         allChunks.push(block);
         offset += readSize;
@@ -1286,15 +1070,6 @@ export default function BloodPressure({
           userBytes[i + 3] === 0x3f;
 
         if (!isMarker) continue;
-
-        console.log('MARKER FOUND:', {
-          area: userIndex + 1,
-          markerOffset: i,
-          markerAddress: '0x' + (startAddress + i).toString(16).toUpperCase(),
-          markerHex: Buffer.from(userBytes.subarray(i, i + 5))
-            .toString('hex')
-            .toUpperCase(),
-        });
 
         const candidates: {
           bpStart: number;
@@ -1325,17 +1100,6 @@ export default function BloodPressure({
         }
 
         if (!candidates.length) {
-          console.log('NO BP FOR MARKER:', {
-            markerAddress: '0x' + (startAddress + i).toString(16).toUpperCase(),
-            nearHex: Buffer.from(
-              userBytes.subarray(
-                Math.max(0, i - 30),
-                Math.min(userBytes.length, i + 20),
-              ),
-            )
-              .toString('hex')
-              .toUpperCase(),
-          });
           continue;
         }
 
@@ -1369,20 +1133,12 @@ export default function BloodPressure({
           absoluteAddress: startAddress + best.bpStart,
         };
 
-        console.log('VALID EEPROM RECORD:', item);
         finalRecords.push(item);
       }
     }
 
     const unique = uniqueRecords(finalRecords);
     const sorted = sortOmronRecords(unique);
-
-    console.log('UNIQUE RECORD COUNT:', unique.length);
-    console.log(
-      'FINAL SORTED RECORD NOS:',
-      sorted.map(r => r.recordNo),
-    );
-    console.log('FINAL SORTED RECORDS:', sorted);
 
     return sorted.map((item, index) => ({
       ...item,
@@ -1474,7 +1230,6 @@ export default function BloodPressure({
     if (!device) throw new Error('Device not connected');
 
     const isConn = await device.isConnected().catch(() => false);
-    console.log('TX: isConnected=', isConn, '| writeCharCached=', writeCharRef.current !== null);
 
     if (!isConn) throw new Error('Device not connected (isConnected=false)');
 
@@ -1483,7 +1238,6 @@ export default function BloodPressure({
     const writeChar = writeCharRef.current ?? (await getWriteChar(device));
 
     if (!writeCharRef.current) {
-      console.log('TX: write char not cached — using fresh discovery (CCCD may reset)');
       writeCharRef.current = writeChar;
     }
 
@@ -1493,21 +1247,21 @@ export default function BloodPressure({
 
     const base64 = Buffer.from(command).toString('base64');
 
-    console.log('TX:', Buffer.from(command).toString('hex').toUpperCase());
-    console.log(
-      'TX: writing to', writeChar.uuid,
-      '| withResponse=', writeChar.isWritableWithResponse,
-    );
-
-    if (writeChar.isWritableWithResponse) {
-      await writeChar.writeWithResponse(base64);
-    } else if (writeChar.isWritableWithoutResponse) {
-      await writeChar.writeWithoutResponse(base64);
-    } else {
-      throw new Error('HEM write characteristic is not writable');
+    try {
+      if (writeChar.isWritableWithResponse) {
+        await writeChar.writeWithResponse(base64);
+      } else if (writeChar.isWritableWithoutResponse) {
+        await writeChar.writeWithoutResponse(base64);
+      } else {
+        throw new Error('HEM write characteristic is not writable');
+      }
+    } catch (error) {
+      if (isExpectedBleDisconnectError(error)) {
+        throw new Error('Device not connected');
+      }
+      throw error;
     }
 
-    console.log('TX: write completed, waiting for RX...');
     return waitPromise;
   }
 
@@ -1518,7 +1272,6 @@ export default function BloodPressure({
       }
 
       const timer = setTimeout(() => {
-        console.log('RX TIMEOUT - no packet resolved');
         packetPromiseRef.current = null;
         reject(new Error('Omron response timeout'));
       }, timeoutMs);
@@ -1582,14 +1335,6 @@ export default function BloodPressure({
       const dia = recordBytes[shift + 1];
       const bpm = recordBytes[shift + 2];
 
-      console.log('TRY BP CANDIDATE:', {
-        shift,
-        sys,
-        dia,
-        bpm,
-        rawHex,
-      });
-
       if (
         sys >= 60 &&
         sys <= 260 &&
@@ -1599,12 +1344,10 @@ export default function BloodPressure({
         bpm >= 20 &&
         bpm <= 240
       ) {
-        console.log('ACCEPT RECORD:', { shift, sys, dia, bpm, rawHex });
         return buildRecord(recordBytes, sys, dia, bpm);
       }
     }
 
-    console.log('REJECT RECORD:', rawHex);
     return null;
   }
 
@@ -1650,22 +1393,12 @@ export default function BloodPressure({
 
   async function disconnectDevice() {
     try {
-      removeMonitors();
-
-      if (connectedRef.current) {
-        const isConnected = await connectedRef.current
-          .isConnected()
-          .catch(() => false);
-
-        if (isConnected) {
-          await connectedRef.current.cancelConnection();
-        }
-      }
-    } catch (e) {
-      console.log('DISCONNECT ERROR:', e);
+      await teardownBleConnection();
+    } catch {
+      /* noop */
     }
 
-    clearConnectionState('Disconnected');
+    setStatus('Disconnected');
   }
 
   function delay(ms: number) {

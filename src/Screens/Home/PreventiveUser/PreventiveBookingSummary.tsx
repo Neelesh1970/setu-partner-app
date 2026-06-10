@@ -154,12 +154,14 @@ export default function PreventiveBookingSummary({ navigation, route }: Props): 
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.headerBg} />
 
-      <SafeAreaView style={styles.headerSafe}>
-        <PreventiveHealthHeader
-          title="Booking Summary"
-          onBackPress={() => navigation.navigate("PreventiveHealth")}
-        />
-      </SafeAreaView>
+      <View style={styles.headerShell}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <PreventiveHealthHeader
+            title="Booking Summary"
+            onBackPress={() => navigation.navigate("PreventiveHealth")}
+          />
+        </SafeAreaView>
+      </View>
 
       <SafeAreaView style={styles.body}>
         {loading ? (
@@ -230,11 +232,14 @@ export default function PreventiveBookingSummary({ navigation, route }: Props): 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
 
-  headerSafe: {
+  headerShell: {
     backgroundColor: COLORS.headerBg,
     borderBottomLeftRadius: ms(22),
     borderBottomRightRadius: ms(22),
     overflow: "hidden",
+  },
+  headerSafe: {
+    backgroundColor: COLORS.headerBg,
   },
 
   body: { flex: 1 },

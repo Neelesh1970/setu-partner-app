@@ -89,12 +89,14 @@ export default function WomenHealth({ navigation, route }: any) {
     <>
       <StatusBar barStyle="light-content" backgroundColor="#1C39BB" />
 
-      <SafeAreaView style={styles.headerSafe}>
-        <PreventiveHealthHeader
-          title={data?.category_name || route?.params?.title || "Health Package"}
-          onBackPress={() => navigation.goBack()}
-        />
-      </SafeAreaView>
+      <View style={styles.headerShell}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <PreventiveHealthHeader
+            title={data?.category_name || route?.params?.title || "Health Package"}
+            onBackPress={() => navigation.goBack()}
+          />
+        </SafeAreaView>
+      </View>
 
       <SafeAreaView style={styles.bodySafe}>
         {loading ? <AppSkeleton variant="default" /> : <ScrollView
@@ -165,13 +167,16 @@ export default function WomenHealth({ navigation, route }: any) {
 }
 
 const styles = StyleSheet.create({
-  headerSafe: {
+  headerShell: {
     backgroundColor: COLORS.headerBg,
     borderBottomLeftRadius: ms(18),
     borderBottomRightRadius: ms(18),
     overflow: "hidden",
     zIndex: 10,
     elevation: 10,
+  },
+  headerSafe: {
+    backgroundColor: COLORS.headerBg,
   },
   bodySafe: {
     flex: 1,
