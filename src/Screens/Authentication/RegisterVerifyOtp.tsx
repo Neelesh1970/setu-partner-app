@@ -82,27 +82,34 @@ const RegisterVerifyOtp: React.FC = () => {
     setLoading(true);
     try {
       if (alreadyRegistered) {
-        console.log('[RegisterVerifyOtp] alreadyRegistered=true — verifying existing patient OTP');
+        if (__DEV__) {
+          console.log('[RegisterVerifyOtp] alreadyRegistered=true — verifying existing patient OTP');
+        }
         const res = await verifySmartpingOtp({ mobile, otp });
         const token = res?.token ?? res?.data?.token;
         const userID = res?.userID ?? res?.userId ?? res?.user_id ?? res?.data?.userID ?? res?.data?.userId ?? res?.data?.user_id ?? res?.user?.id;
         const refreshToken = res?.refreshToken ?? res?.data?.refreshToken;
-        console.log('[RegisterVerifyOtp] alreadyRegistered — token:', token ? 'present' : 'MISSING', '| userID:', userID);
+        if (__DEV__) {
+          console.log('[RegisterVerifyOtp] alreadyRegistered — token:', token ? 'present' : 'MISSING', '| userID:', userID);
+        }
         if (!token || !userID) {
           Alert.alert('Login Failed', 'Could not retrieve session. Please try again.');
           return;
         }
         // Save ONLY to patient-specific keys — do NOT touch lab worker's AUTH_TOKEN/REFRESH_TOKEN.
         await saveRegisteredPatientAuthData(token, String(userID), refreshToken);
-        console.log('[RegisterVerifyOtp] alreadyRegistered — patient auth saved, navigating to PreventiveHealth');
+        if (__DEV__) {
+          console.log('[RegisterVerifyOtp] alreadyRegistered — patient auth saved, navigating to PreventiveHealth');
+        }
         navigation.reset({ index: 1, routes: [{ name: 'Home' }, { name: 'PreventiveHealth' }] });
       } else {
-        console.log('[RegisterVerifyOtp] New user OTP verified — reading stored lab_user_id');
         const res = await verifyRegistrationOtpRegFlow({ mobile, otp });
         // Use the lab worker's own stored ID (set during login/register OTP).
         // Do NOT use res?.user?.id here — that belongs to the new patient, not the lab worker.
         const lab_user_id = (await getLabUserId()) ?? '';
-        console.log('[RegisterVerifyOtp] lab_user_id from storage:', lab_user_id || 'EMPTY — lab worker may not have logged in via OTP flow');
+        if (__DEV__) {
+          console.log('[RegisterVerifyOtp] lab_user_id from storage:', lab_user_id || 'EMPTY — lab worker may not have logged in via OTP flow');
+        }
         navigation.navigate('RegisterName', { mobile, lab_user_id });
       }
     } catch (err: any) {

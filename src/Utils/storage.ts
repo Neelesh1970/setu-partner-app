@@ -376,6 +376,9 @@ export const logStoredSessionToConsole = async (
   tag = '[StoredSession]',
   mode: LogStoredSessionMode = 'preventiveHealth',
 ): Promise<void> => {
+  if (!__DEV__) {
+    return;
+  }
   const s = await getAllStoredSessionData();
 
   if (mode === 'labWorkerHome') {

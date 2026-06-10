@@ -64,7 +64,6 @@ export default function PreventiveCheckout({ navigation }: any) {
 
   useEffect(() => {
     if (bookingId) {
-      console.log("[PreventiveCheckout] booking id:", bookingId);
     }
   }, [bookingId]);
 
@@ -123,7 +122,6 @@ export default function PreventiveCheckout({ navigation }: any) {
         e && typeof e === "object" && "message" in e
           ? String((e as Error).message)
           : "Failed to load checkout";
-      console.log("getBookingCheckout error", e);
       Alert.alert("Checkout", msg);
       setBill(DEFAULT_BILL);
     } finally {

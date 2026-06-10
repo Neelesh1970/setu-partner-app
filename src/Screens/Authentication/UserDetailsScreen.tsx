@@ -49,13 +49,6 @@ const UserDetailsScreen = () => {
 
         const dob = `${selectedYear}-${months.indexOf(selectedMonth) + 1}-${selectedDay}`;
 
-        console.log('USER DATA:', {
-            name,
-            surname,
-            dob,
-            gender,
-        });
-
         // ✅ Navigate here
         navigation.navigate('PremiumPrice');
     };

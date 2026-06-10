@@ -81,7 +81,6 @@ const IdentityVerificationScreen: React.FC = () => {
         navigation.reset({ index: 0, routes: [{ name: 'VerificationPending' }] });
       }
     } catch (e) {
-      console.log('[IdentityVerificationScreen] status-check error:', e);
     }
   }, [navigation]);
 
@@ -107,7 +106,6 @@ const IdentityVerificationScreen: React.FC = () => {
         navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
       }
     } catch (e) {
-      console.log('[IdentityVerificationScreen] header refresh error:', e);
     } finally {
       setHeaderChecking(false);
     }
@@ -180,7 +178,6 @@ const IdentityVerificationScreen: React.FC = () => {
         technician_certificate: labCertificateFile ?? undefined,
       });
 
-      console.log('[IdentityVerificationScreen] submit response:', response);
 
       if (response.success) {
         navigation.reset({
@@ -191,7 +188,6 @@ const IdentityVerificationScreen: React.FC = () => {
         Alert.alert('Error', response.message || 'Submission failed');
       }
     } catch (error: any) {
-      console.log('[IdentityVerificationScreen] submit error:', error);
       Alert.alert('Error', error?.message ?? 'Submission failed. Please try again.');
     } finally {
       setLoading(false);

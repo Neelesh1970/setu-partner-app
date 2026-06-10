@@ -44,17 +44,13 @@ export default function WomenHealth({ navigation, route }: any) {
 
   const fetchData = async () => {
     if (!categoryPackageId) {
-      console.log("[HealthPackage] categoryPackageId is undefined — skipping API call");
       setLoading(false);
       return;
     }
-    console.log("[HealthPackage] categoryPackageId:", categoryPackageId);
     try {
       const res = await getPackageById(categoryPackageId);
-      console.log("[HealthPackage] API response:", res);
       setData(res);
     } catch (e) {
-      console.log(e);
     } finally {
       setLoading(false);
     }

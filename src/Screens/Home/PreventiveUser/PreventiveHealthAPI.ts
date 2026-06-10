@@ -74,11 +74,11 @@ import axios from "axios";
 import { getRegisteredPatientAuthToken, getRegisteredPatientRefreshToken } from "../../../Utils/storage";
 import { getPreventiveCartStore } from "../../../Utils/preventiveCartStore";
 import axiosInstance from "../../../api/axiosInstance";
+import { PREVENTIVE_BASE_URL } from "../../../api/apiConfig";
 
 /* ================= BASE ================= */
 
-export const PREVENTIVE_BASE_URL =
-  "https://staging.setuai.com/preventive-health";
+export { PREVENTIVE_BASE_URL };
 
 /* ================= AXIOS INSTANCE ================= */
 
@@ -99,7 +99,9 @@ const getAuthHeaders = async () => {
     getRegisteredPatientRefreshToken(),
   ]);
 
-  console.log('[PreventiveHealthAPI] getAuthHeaders — patient token present:', Boolean(accessToken));
+  if (__DEV__) {
+    console.log('[PreventiveHealthAPI] getAuthHeaders — patient token present:', Boolean(accessToken));
+  }
   return {
     Authorization: `Bearer ${accessToken ?? ""}`,
     "x-refresh-token": refreshToken ?? "",

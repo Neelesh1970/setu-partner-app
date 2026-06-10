@@ -117,8 +117,7 @@ const Screening = ({ navigation, route }: any) => {
           screening: { ...screening, ...found },
         });
       }
-    } catch (e) {
-      console.log("Screening refresh error", e);
+    } catch {
     } finally {
       setRefreshing(false);
     }

@@ -76,7 +76,6 @@ export default function WomenHealthOverview({ navigation, route }: any) {
 
       setCategoryDetail(categoryRes);
     } catch (e) {
-      console.log("Overview error", e);
     } finally {
       setLoading(false);
     }
@@ -230,7 +229,6 @@ export default function WomenHealthOverview({ navigation, route }: any) {
                     }
                     setAddedVisible(true);
                   } catch (e) {
-                    console.log("Add to cart error", e);
                   }
                 }}
               >

@@ -134,7 +134,6 @@ const ReportPdfViewer: React.FC<ReportPdfViewerProps> = ({
         progressContainerStyle?: ViewStyle;
       }>;
     } catch (e) {
-      console.log('[report] PDF module not available:', e);
       return null;
     }
   }, []);
@@ -212,7 +211,6 @@ const ReportPdfViewer: React.FC<ReportPdfViewerProps> = ({
       if (isStaleLoad(reportUrl, reportBookingId, reportNonce)) {
         return;
       }
-      console.log('[report] PDF viewer error:', error);
       onViewerLoadingChange(false);
       onViewerError();
     },

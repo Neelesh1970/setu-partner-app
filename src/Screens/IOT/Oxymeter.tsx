@@ -1287,13 +1287,10 @@ const Oxymeter: React.FC = () => {
     try {
       if (bookingId) {
         const pdfBody = { bookingId };
-        console.log('[Oxymeter] reports/payload/pdf request:', JSON.stringify(pdfBody, null, 2));
         const pdfRes = await axiosInstance.post('reports/payload/pdf', pdfBody);
-        console.log('[Oxymeter] reports/payload/pdf response:', JSON.stringify(pdfRes.data, null, 2));
       }
     } catch (err) {
       const e = err as { message?: string };
-      console.log('[Oxymeter] reports/payload/pdf error:', e?.message ?? err);
       console.warn('[Oxymeter] PDF generation failed:', e?.message ?? err);
     } finally {
       setIsPdfLoading(false);

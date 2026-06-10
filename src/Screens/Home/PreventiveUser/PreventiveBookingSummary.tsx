@@ -101,7 +101,6 @@ export default function PreventiveBookingSummary({ navigation, route }: Props): 
         setBooking(b);
         setPayment(p);
       } catch (e) {
-        console.log("[PreventiveBookingSummary] fetch error", e);
       } finally {
         setLoading(false);
       }
