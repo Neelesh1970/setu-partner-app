@@ -1,10 +1,11 @@
-import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
+import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import {
   getLabWalletSummary,
   getLabWalletTransactions,
   type LabWalletSummaryData,
   type LabWalletTransactionsData,
 } from '../../api/labWalletApi';
+import { isJsonEqual } from '../../Utils/cacheEquality';
 
 export type WalletState = {
   summary: LabWalletSummaryData | null;
@@ -24,9 +25,11 @@ const initialState: WalletState = {
   transactionsError: null,
 };
 
+type FetchWalletSummaryArg = { force?: boolean } | undefined;
+
 export const fetchWalletSummary = createAsyncThunk(
   'wallet/fetchSummary',
-  async (_, { rejectWithValue }) => {
+  async (_arg: FetchWalletSummaryArg, { rejectWithValue }) => {
     try {
       return await getLabWalletSummary();
     } catch (e) {
@@ -53,20 +56,29 @@ const walletSlice = createSlice({
   initialState,
   reducers: {
     clearWallet: () => initialState,
+    setWalletSummary: (state, action: PayloadAction<LabWalletSummaryData | null>) => {
+      state.summary = action.payload;
+    },
   },
   extraReducers: builder => {
     builder
       .addCase(fetchWalletSummary.pending, state => {
-        state.summaryLoading = true;
+        if (!state.summary) {
+          state.summaryLoading = true;
+        }
         state.summaryError = null;
       })
       .addCase(fetchWalletSummary.fulfilled, (state, action) => {
         state.summaryLoading = false;
-        state.summary = action.payload;
+        if (!isJsonEqual(state.summary, action.payload)) {
+          state.summary = action.payload;
+        }
       })
       .addCase(fetchWalletSummary.rejected, (state, action) => {
         state.summaryLoading = false;
-        state.summaryError = (action.payload as string) ?? 'Failed to load wallet summary';
+        if (!state.summary) {
+          state.summaryError = (action.payload as string) ?? 'Failed to load wallet summary';
+        }
       })
       .addCase(fetchWalletTransactions.pending, state => {
         state.transactionsLoading = true;
@@ -83,5 +95,5 @@ const walletSlice = createSlice({
   },
 });
 
-export const { clearWallet } = walletSlice.actions;
+export const { clearWallet, setWalletSummary } = walletSlice.actions;
 export default walletSlice.reducer;

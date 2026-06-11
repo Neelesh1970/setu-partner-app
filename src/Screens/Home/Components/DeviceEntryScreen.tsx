@@ -1,7 +1,7 @@
 import React from 'react';
 import {
+  ActivityIndicator,
   Image,
-  ImageSourcePropType,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -14,7 +14,8 @@ import PreventiveHealthHeader from '../PreventiveUser/PreventiveHealthHeader';
 
 export interface DeviceEntryScreenProps {
   headerTitle: string;
-  image: ImageSourcePropType;
+  imageUrl: string | null;
+  imageLoading?: boolean;
   title: string;
   description: string;
   buttonText: string;
@@ -24,7 +25,8 @@ export interface DeviceEntryScreenProps {
 
 const DeviceEntryScreen: React.FC<DeviceEntryScreenProps> = ({
   headerTitle,
-  image,
+  imageUrl,
+  imageLoading = false,
   title,
   description,
   buttonText,
@@ -48,11 +50,19 @@ const DeviceEntryScreen: React.FC<DeviceEntryScreenProps> = ({
       </View>
 
       <View style={[styles.imageWrap, { paddingHorizontal: sidePad }]}>
-        <Image
-          source={image}
-          style={styles.heroImage}
-          resizeMode="contain"
-        />
+        {imageLoading ? (
+          <View style={styles.heroImage}>
+            <ActivityIndicator color={COLORS.PRIMARY} />
+          </View>
+        ) : imageUrl ? (
+          <Image
+            source={{ uri: imageUrl }}
+            style={styles.heroImage}
+            resizeMode="contain"
+          />
+        ) : (
+          <View style={styles.heroImage} />
+        )}
       </View>
 
       <SafeAreaView

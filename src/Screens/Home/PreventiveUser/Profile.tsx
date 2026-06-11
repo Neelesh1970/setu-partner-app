@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -31,44 +31,19 @@ import axiosInstance from '../../../api/axiosInstance';
 import { postAuthLogout } from './PreventiveHealthAPI';
 import { logoutUser } from '../../../auth/logoutUser';
 import CustomPopup from '../Components/CustomPopup';
+import { useLabProfile } from '../../../hooks/useLabProfile';
+import {
+  fetchLabProfile,
+  mergeProfilePersonalInfo,
+  setProfileData,
+  type LabProfileData,
+  type PersonalInfo,
+} from '../../../features/profile/profileSlice';
+import { useAppDispatch } from '../../../store/hooks';
 
 const PRIMARY = '#1C39BB';
 const LABEL_GRAY = '#6B7280';
 const BORDER = '#E5E7EB';
-
-type PersonalInfo = {
-  id?: string;
-  full_name?: string | null;
-  location?: string | null;
-  age?: number | null;
-  gender?: string | null;
-  email?: string | null;
-  phone_number?: string | null;
-  profile_image_url?: string | null;
-  profile_image_s3_key?: string | null;
-  role?: string | null;
-  service_scope?: string | null;
-};
-
-type WorkStats = {
-  users_registered?: number;
-  tests_completed?: number;
-  walk_in_tests?: number;
-  home_visits?: number;
-};
-
-type Earnings = {
-  total_amount?: number;
-  currency?: string;
-  current_month_amount?: number;
-  wallet_balance?: number;
-};
-
-type LabProfileData = {
-  personal_info?: PersonalInfo;
-  work_stats?: WorkStats;
-  earnings?: Earnings;
-};
 
 type LabProfileResponse = {
   success?: boolean;
@@ -116,13 +91,17 @@ const pickerOptions = {
 
 const Profile: React.FC = () => {
   const navigation = useNavigation<ProfileNav>();
+  const dispatch = useAppDispatch();
   const insets = useSafeAreaInsets();
   const bottomPad = Math.max(insets.bottom, vs(16));
 
-  const [loading, setLoading] = useState(true);
+  const {
+    data: profile,
+    loading: profileLoading,
+    error: profileError,
+    revalidate: revalidateProfile,
+  } = useLabProfile();
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [profile, setProfile] = useState<LabProfileData | null>(null);
   const [uploading, setUploading] = useState(false);
 
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -135,38 +114,30 @@ const Profile: React.FC = () => {
   const [loggingOut, setLoggingOut] = useState(false);
   const [photoPickerVisible, setPhotoPickerVisible] = useState(false);
 
-  const fetchLabProfile = useCallback(async (opts?: { isPullRefresh?: boolean }) => {
-    const pull = opts?.isPullRefresh ?? false;
-    if (pull) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
-    setError(null);
-    try {
-      const res = await axiosInstance.get<LabProfileResponse>('lab/profile');
-      const data = res.data?.data;
-      if (!data) {
-        setError('No profile data returned.');
-        setProfile(null);
-      } else {
-        setProfile(data);
-      }
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to load profile.');
-      setProfile(null);
-    } finally {
+  const refreshProfile = useCallback(
+    async (opts?: { isPullRefresh?: boolean }) => {
+      const pull = opts?.isPullRefresh ?? false;
       if (pull) {
-        setRefreshing(false);
-      } else {
-        setLoading(false);
+        setRefreshing(true);
       }
-    }
-  }, []);
+      try {
+        const result = await revalidateProfile();
+        if (fetchLabProfile.fulfilled.match(result) && !result.payload) {
+          dispatch(setProfileData(null));
+        }
+      } finally {
+        if (pull) {
+          setRefreshing(false);
+        }
+      }
+    },
+    [dispatch, revalidateProfile],
+  );
 
-  useEffect(() => {
-    fetchLabProfile();
-  }, [fetchLabProfile]);
+  const loading = profileLoading && profile === null;
+  const error =
+    profileError ??
+    (profile === null && !profileLoading ? 'No profile data returned.' : null);
 
   const uploadProfileImage = useCallback(async (asset: Asset) => {
     const uri = asset.uri;
@@ -189,15 +160,7 @@ const Profile: React.FC = () => {
       );
       const updated = res.data?.data?.personal_info;
       if (updated) {
-        setProfile(prev => {
-          if (!prev) {
-            return { personal_info: updated };
-          }
-          return {
-            ...prev,
-            personal_info: { ...prev.personal_info, ...updated },
-          };
-        });
+        dispatch(mergeProfilePersonalInfo(updated));
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Upload failed.';
@@ -205,7 +168,7 @@ const Profile: React.FC = () => {
     } finally {
       setUploading(false);
     }
-  }, []);
+  }, [dispatch]);
 
   const pickFromLibrary = useCallback(async () => {
     try {
@@ -313,17 +276,11 @@ const Profile: React.FC = () => {
       const data = res.data?.data;
       const updatedPersonal = data?.personal_info;
       if (updatedPersonal) {
-        setProfile(prev => {
-          if (!prev) {
-            return { personal_info: updatedPersonal };
-          }
-          return {
-            ...prev,
-            personal_info: { ...prev.personal_info, ...updatedPersonal },
-          };
-        });
+        dispatch(mergeProfilePersonalInfo(updatedPersonal));
+      } else if (data) {
+        dispatch(setProfileData(data));
       } else {
-        await fetchLabProfile({ isPullRefresh: true });
+        await refreshProfile({ isPullRefresh: true });
       }
       setEditModalVisible(false);
     } catch (e: unknown) {
@@ -332,7 +289,7 @@ const Profile: React.FC = () => {
     } finally {
       setSavingProfile(false);
     }
-  }, [editFullName, editEmail, editGender, editAge, fetchLabProfile]);
+  }, [editFullName, editEmail, editGender, editAge, dispatch, refreshProfile]);
 
   const openLogoutModal = useCallback(() => {
     setLogoutModalVisible(true);
@@ -437,7 +394,9 @@ const Profile: React.FC = () => {
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
-              onRefresh={() => fetchLabProfile({ isPullRefresh: true })}
+              onRefresh={() => {
+                void refreshProfile({ isPullRefresh: true });
+              }}
               colors={[PRIMARY]}
               tintColor={PRIMARY}
             />
@@ -448,7 +407,9 @@ const Profile: React.FC = () => {
               <Text style={styles.errorText}>{error}</Text>
               <TouchableOpacity
                 style={styles.retryBtn}
-                onPress={() => fetchLabProfile()}
+                onPress={() => {
+                  void refreshProfile();
+                }}
                 activeOpacity={0.85}
               >
                 <Text style={styles.retryBtnText}>Retry</Text>

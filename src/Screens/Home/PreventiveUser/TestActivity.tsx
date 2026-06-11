@@ -442,7 +442,7 @@ const TestActivity: React.FC = () => {
       const handleBack = () => {
         if (isNavigating) return true;
         isNavigating = true;
-        navigation.goBack();
+        navigation.replace('Home');
         return true;
       };
       let sub: { remove: () => void } | undefined;

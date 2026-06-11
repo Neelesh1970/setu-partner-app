@@ -35,9 +35,10 @@ import axiosInstance from '../../api/axiosInstance';
 import {BACKEND_BMI_DEVICE_ID} from '../../Utils/labIotPerformTest';
 import {setPendingCompletedBookingItemId} from '../../Utils/multiDeviceSession';
 import DeviceEntryScreen from '../Home/Components/DeviceEntryScreen';
-import bmiDeviceImg from '../../assets/iot/BMI.png';
 import PreventiveHealthHeader from '../Home/PreventiveUser/PreventiveHealthHeader';
 import {COLORS} from '../../Constants/theme';
+import {BMI_DEVICE_IMAGE_API_ID} from '../../Constants/homeMockData';
+import {useBackgroundImageUrl} from '../../hooks/useBackgroundImageUrl';
 
 const STORAGE_KEY = 'SCALE_WEIGHT_HISTORY';
 
@@ -283,6 +284,9 @@ export default function ScaleDeviceScreen() {
   const {width: windowWidth} = useWindowDimensions();
   const sidePad = Math.min(24, Math.max(16, windowWidth * 0.04));
   const [showDeviceScreen, setShowDeviceScreen] = useState(false);
+  const {url: bmiDeviceImageUrl, loading: bmiDeviceImageLoading} = useBackgroundImageUrl(
+    BMI_DEVICE_IMAGE_API_ID,
+  );
   const [status, setStatus] = useState('Idle');
   const [devices, setDevices] = useState<Device[]>([]);
   const [connectedName, setConnectedName] = useState('');
@@ -899,7 +903,8 @@ export default function ScaleDeviceScreen() {
     return (
       <DeviceEntryScreen
         headerTitle="BMI"
-        image={bmiDeviceImg}
+        imageUrl={bmiDeviceImageUrl}
+        imageLoading={bmiDeviceImageLoading}
         title="Pair Device"
         description="We've detected your BMI device. Please make sure Bluetooth is enabled and the device is powered on nearby, then tap 'Connect' to pair the device and begin your body measurement test."
         buttonText="Connect"
