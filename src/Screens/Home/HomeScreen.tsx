@@ -18,21 +18,22 @@ import { COLORS, FONT_SIZE, SPACING } from '../../Constants/theme';
 import {
   BACKGROUND_IMAGE_API_ID,
   HOME_VISIT_TESTS,
+  EXISTING_USER_CATEGORY_IMAGE_API_ID,
+  REGISTER_NEW_USER_CATEGORY_IMAGE_API_ID,
   WALLET_BACKGROUND_IMAGE_API_ID,
   WALLET_STATIC,
 } from '../../Constants/homeMockData';
-import { fetchBackgroundImageUrl } from '../../Services/backgroundImageService';
 import { RootStackParamList } from '../../navigation/types';
 import { logStoredSessionToConsole } from '../../Utils/storage';
 import { pickBackendDeviceByTestName } from '../../Utils/pickBackendDeviceByTestName';
 import { applyLabIotPerformTestNavigation } from '../../Utils/labIotPerformTest';
-import axiosInstance from '../../api/axiosInstance';
 import {
-  getLabWalletSummary,
   resolveWalletBalance,
   resolveWalletCurrency,
-  type LabWalletSummaryData,
 } from '../../api/labWalletApi';
+import { useBackgroundImageUrl } from '../../hooks/useBackgroundImageUrl';
+import { useWalletSummary } from '../../hooks/useWalletSummary';
+import { useLabProfile } from '../../hooks/useLabProfile';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import PreventiveHealthHeader from './PreventiveUser/PreventiveHealthHeader';
 import {
@@ -49,9 +50,6 @@ import {
   type RawPackageItem,
 } from './PreventiveUser/PreventiveHealthAPI';
 import CustomPopup from './Components/CustomPopup';
-
-const NEW_USER_CATEGORY_ICON = require('../../assets/icons/newuser.png');
-const EXISTING_USER_CATEGORY_ICON = require('../../assets/icons/existinguser.png');
 
 const noop = () => {};
 
@@ -153,11 +151,19 @@ const HomeHeroBanner: React.FC<HomeHeroBannerProps> = ({ imageUrl, loading }) =>
 };
 
 type HomeRequestCategoriesProps = {
+  registerNewUserIconUrl: string | null;
+  registerNewUserIconLoading: boolean;
+  existingUserIconUrl: string | null;
+  existingUserIconLoading: boolean;
   onRegisterNewUser: () => void;
   onUpcomingVisitsAndTests: () => void;
 };
 
 const HomeRequestCategories: React.FC<HomeRequestCategoriesProps> = ({
+  registerNewUserIconUrl,
+  registerNewUserIconLoading,
+  existingUserIconUrl,
+  existingUserIconLoading,
   onRegisterNewUser,
   onUpcomingVisitsAndTests,
 }) => (
@@ -169,12 +175,20 @@ const HomeRequestCategories: React.FC<HomeRequestCategoriesProps> = ({
         onPress={onRegisterNewUser}
         activeOpacity={0.85}
       >
-        <Image
-          source={NEW_USER_CATEGORY_ICON}
-          style={styles.categoryIconImageNewUser}
-          resizeMode="contain"
-          accessibilityIgnoresInvertColors
-        />
+        {registerNewUserIconLoading ? (
+          <View style={styles.categoryIconImageNewUser}>
+            <ActivityIndicator color={COLORS.PRIMARY} size="small" />
+          </View>
+        ) : registerNewUserIconUrl ? (
+          <Image
+            source={{ uri: registerNewUserIconUrl }}
+            style={styles.categoryIconImageNewUser}
+            resizeMode="contain"
+            accessibilityIgnoresInvertColors
+          />
+        ) : (
+          <View style={styles.categoryIconImageNewUser} />
+        )}
         <Text style={styles.categoryLabel}>Register New User</Text>
       </TouchableOpacity>
       <TouchableOpacity
@@ -182,36 +196,25 @@ const HomeRequestCategories: React.FC<HomeRequestCategoriesProps> = ({
         onPress={onUpcomingVisitsAndTests}
         activeOpacity={0.85}
       >
-        <Image
-          source={EXISTING_USER_CATEGORY_ICON}
-          style={styles.categoryIconImage}
-          resizeMode="contain"
-          accessibilityIgnoresInvertColors
-        />
+        {existingUserIconLoading ? (
+          <View style={styles.categoryIconImage}>
+            <ActivityIndicator color={COLORS.PRIMARY} size="small" />
+          </View>
+        ) : existingUserIconUrl ? (
+          <Image
+            source={{ uri: existingUserIconUrl }}
+            style={styles.categoryIconImage}
+            resizeMode="contain"
+            accessibilityIgnoresInvertColors
+          />
+        ) : (
+          <View style={styles.categoryIconImage} />
+        )}
         <Text style={styles.categoryLabel}>Upcoming Visits & Tests</Text>
       </TouchableOpacity>
     </View>
   </View>
 );
-
-type LabProfileWorkStats = {
-  users_registered?: number;
-  tests_completed?: number;
-};
-
-type LabProfilePersonalInfo = {
-  full_name?: string | null;
-  profile_image_url?: string | null;
-  service_scope?: string | null;
-};
-
-type LabProfileApiResponse = {
-  success?: boolean;
-  data?: {
-    personal_info?: LabProfilePersonalInfo;
-    work_stats?: LabProfileWorkStats;
-  };
-};
 
 const initialsFromName = (name: string | null | undefined): string => {
   const trimmed = (name ?? '').trim();
@@ -477,16 +480,27 @@ type HomeNav = NativeStackNavigationProp<RootStackParamList, 'Home'>;
 
 const HomeScreen: React.FC = () => {
   const navigation = useNavigation<HomeNav>();
-  const [heroUrl, setHeroUrl] = useState<string | null>(null);
-  const [heroLoading, setHeroLoading] = useState(true);
-  const [walletImageUrl, setWalletImageUrl] = useState<string | null>(null);
-  const [walletImageLoading, setWalletImageLoading] = useState(true);
-  const [walletSummary, setWalletSummary] = useState<LabWalletSummaryData | null>(null);
-  const [walletWorkStats, setWalletWorkStats] = useState<LabProfileWorkStats | null>(null);
-  const [walletMetricsLoading, setWalletMetricsLoading] = useState(true);
-  const [labProfileName, setLabProfileName] = useState('');
-  const [labProfileImageUrl, setLabProfileImageUrl] = useState<string | null>(null);
-  const [labServiceScope, setLabServiceScope] = useState('');
+  const { url: heroUrl, loading: heroLoading, revalidate: revalidateHeroImage } =
+    useBackgroundImageUrl(BACKGROUND_IMAGE_API_ID);
+  const {
+    url: walletImageUrl,
+    loading: walletImageLoading,
+    revalidate: revalidateWalletImage,
+  } = useBackgroundImageUrl(WALLET_BACKGROUND_IMAGE_API_ID);
+  const {
+    url: registerNewUserIconUrl,
+    loading: registerNewUserIconLoading,
+    revalidate: revalidateRegisterNewUserIcon,
+  } = useBackgroundImageUrl(REGISTER_NEW_USER_CATEGORY_IMAGE_API_ID);
+  const {
+    url: existingUserIconUrl,
+    loading: existingUserIconLoading,
+    revalidate: revalidateExistingUserIcon,
+  } = useBackgroundImageUrl(EXISTING_USER_CATEGORY_IMAGE_API_ID);
+  const { summary: walletSummary, loading: walletSummaryLoading, revalidate: revalidateWallet } =
+    useWalletSummary();
+  const { data: labProfile, loading: labProfileLoading, revalidate: revalidateLabProfile } =
+    useLabProfile();
   const [visitTab, setVisitTab] = useState<'home' | 'walkin'>('home');
   const [refreshing, setRefreshing] = useState(false);
   const [homePatientsLoading, setHomePatientsLoading] = useState(true);
@@ -508,63 +522,10 @@ const HomeScreen: React.FC = () => {
     setDeviceUnavailablePopupVisible(false);
   }, []);
 
-  const loadWalletMetrics = useCallback(async (opts?: { skipSectionLoading?: boolean }) => {
-    const showSectionLoading = !opts?.skipSectionLoading;
-    if (showSectionLoading) {
-      setWalletMetricsLoading(true);
-    }
-    try {
-      const [summaryResult, profileResult] = await Promise.allSettled([
-        getLabWalletSummary(),
-        axiosInstance.get<LabProfileApiResponse>('lab/profile'),
-      ]);
-      if (summaryResult.status === 'fulfilled') {
-        setWalletSummary(summaryResult.value);
-      } else {
-        setWalletSummary(null);
-      }
-
-      if (profileResult.status === 'fulfilled') {
-        const personal = profileResult.value.data?.data?.personal_info;
-        setWalletWorkStats(profileResult.value.data?.data?.work_stats ?? null);
-        setLabProfileName(personal?.full_name?.trim() ?? '');
-        setLabProfileImageUrl(personal?.profile_image_url?.trim() ?? null);
-        setLabServiceScope(personal?.service_scope?.trim() ?? '');
-      } else {
-        setWalletWorkStats(null);
-        setLabProfileName('');
-        setLabProfileImageUrl(null);
-        setLabServiceScope('');
-      }
-    } catch {
-      setWalletSummary(null);
-    } finally {
-      if (showSectionLoading) {
-        setWalletMetricsLoading(false);
-      }
-    }
-  }, []);
-
-  const loadHomeImages = useCallback(async (opts?: { skipSectionLoading?: boolean }) => {
-    const showSectionLoading = !opts?.skipSectionLoading;
-    if (showSectionLoading) {
-      setHeroLoading(true);
-      setWalletImageLoading(true);
-    }
-    try {
-      const [hero, wallet] = await Promise.all([
-        fetchBackgroundImageUrl(BACKGROUND_IMAGE_API_ID),
-        fetchBackgroundImageUrl(WALLET_BACKGROUND_IMAGE_API_ID),
-      ]);
-      setHeroUrl(hero);
-      setWalletImageUrl(wallet);
-    } finally {
-      if (showSectionLoading) {
-        setHeroLoading(false);
-        setWalletImageLoading(false);
-      }
-    }
-  }, []);
+  const walletWorkStats = labProfile?.work_stats ?? null;
+  const labProfileName = labProfile?.personal_info?.full_name?.trim() ?? '';
+  const labProfileImageUrl = labProfile?.personal_info?.profile_image_url?.trim() ?? null;
+  const walletMetricsLoading = walletSummaryLoading || labProfileLoading;
 
   const loadHomePatientPreviews = useCallback(
     async (opts?: { skipSectionLoading?: boolean }) => {
@@ -696,22 +657,26 @@ const HomeScreen: React.FC = () => {
     setRefreshing(true);
     try {
       await Promise.all([
-        loadHomeImages({ skipSectionLoading: true }),
-        loadWalletMetrics({ skipSectionLoading: true }),
+        revalidateHeroImage(),
+        revalidateWalletImage(),
+        revalidateRegisterNewUserIcon(),
+        revalidateExistingUserIcon(),
+        revalidateWallet(),
+        revalidateLabProfile(),
         loadHomePatientPreviews({ skipSectionLoading: true }),
       ]);
     } finally {
       setRefreshing(false);
     }
-  }, [loadHomeImages, loadWalletMetrics, loadHomePatientPreviews]);
-
-  useEffect(() => {
-    loadHomeImages();
-  }, [loadHomeImages]);
-
-  useEffect(() => {
-    loadWalletMetrics();
-  }, [loadWalletMetrics]);
+  }, [
+    revalidateHeroImage,
+    revalidateWalletImage,
+    revalidateRegisterNewUserIcon,
+    revalidateExistingUserIcon,
+    revalidateWallet,
+    revalidateLabProfile,
+    loadHomePatientPreviews,
+  ]);
 
   useEffect(() => {
     loadHomePatientPreviews();
@@ -795,6 +760,10 @@ const HomeScreen: React.FC = () => {
       >
         <HomeHeroBanner imageUrl={heroUrl} loading={heroLoading} />
         <HomeRequestCategories
+          registerNewUserIconUrl={registerNewUserIconUrl}
+          registerNewUserIconLoading={registerNewUserIconLoading}
+          existingUserIconUrl={existingUserIconUrl}
+          existingUserIconLoading={existingUserIconLoading}
           onRegisterNewUser={() => navigation.navigate('RegisterWithOtp')}
           onUpcomingVisitsAndTests={() =>
             navigation.navigate('TestActivity', { initialTab: 'upcoming' })

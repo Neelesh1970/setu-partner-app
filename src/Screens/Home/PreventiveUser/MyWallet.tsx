@@ -20,42 +20,19 @@ import { RootStackParamList } from '../../../navigation/types';
 import { COLORS } from '../../../Constants/theme';
 import { WALLET_BACKGROUND_IMAGE_API_ID, WALLET_STATIC } from '../../../Constants/homeMockData';
 import PreventiveHealthHeader from './PreventiveHealthHeader';
-import axiosInstance from '../../../api/axiosInstance';
-import { fetchBackgroundImageUrl } from '../../../Services/backgroundImageService';
 import {
   flattenWalletTransactionBuckets,
-  getLabWalletSummary,
   getLabWalletTransactions,
   resolveWalletBalance,
   resolveWalletCurrency,
-  type LabWalletSummaryData,
 } from '../../../api/labWalletApi';
+import { useBackgroundImageUrl } from '../../../hooks/useBackgroundImageUrl';
+import { useWalletSummary } from '../../../hooks/useWalletSummary';
+import { useLabProfile } from '../../../hooks/useLabProfile';
 
 const PRIMARY = '#1C39BB';
 const LABEL_GRAY = '#6B7280';
 const BORDER = '#E5E7EB';
-
-type PersonalInfo = {
-  full_name?: string | null;
-  location?: string | null;
-  profile_image_url?: string | null;
-};
-
-type WorkStats = {
-  users_registered?: number;
-  tests_completed?: number;
-};
-
-type LabProfileData = {
-  personal_info?: PersonalInfo;
-  work_stats?: WorkStats;
-};
-
-type LabProfileResponse = {
-  success?: boolean;
-  message?: string;
-  data?: LabProfileData;
-};
 
 /** Per-unit rates (fixed); counts come from `lab/profile` → `work_stats`. */
 const EARNINGS = {
@@ -166,32 +143,23 @@ const MyWallet: React.FC = () => {
   const insets = useSafeAreaInsets();
   const bottomPad = Math.max(insets.bottom, vs(16));
 
-  const [loading, setLoading] = useState(true);
+  const {
+    url: walletImageUrl,
+    loading: walletImageLoading,
+    revalidate: revalidateWalletImage,
+  } = useBackgroundImageUrl(WALLET_BACKGROUND_IMAGE_API_ID);
+  const { summary, loading: summaryLoading, revalidate: revalidateWallet } = useWalletSummary();
+  const { data: profile, loading: profileLoading, revalidate: revalidateProfile } =
+    useLabProfile();
+
   const [refreshing, setRefreshing] = useState(false);
-  const [profile, setProfile] = useState<LabProfileData | null>(null);
-  const [summary, setSummary] = useState<LabWalletSummaryData | null>(null);
+  const [transactionsLoading, setTransactionsLoading] = useState(true);
   const [transactions, setTransactions] = useState<TxRow[]>([]);
-  const [walletImageUrl, setWalletImageUrl] = useState<string | null>(null);
 
-  const loadWalletData = useCallback(async (opts?: { isPullRefresh?: boolean }) => {
-    const pull = opts?.isPullRefresh ?? false;
-    if (pull) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
+  const loadTransactions = useCallback(async () => {
+    setTransactionsLoading(true);
     try {
-      const [profileRes, summaryData, txData, walletImgUrl] = await Promise.all([
-        axiosInstance.get<LabProfileResponse>('lab/profile'),
-        getLabWalletSummary(),
-        getLabWalletTransactions(1, 10),
-        fetchBackgroundImageUrl(WALLET_BACKGROUND_IMAGE_API_ID).catch(() => null),
-      ]);
-
-      setProfile(profileRes.data?.data ?? null);
-      setSummary(summaryData);
-      setWalletImageUrl(walletImgUrl);
-
+      const txData = await getLabWalletTransactions(1, 10);
       const flat = flattenWalletTransactionBuckets(txData);
       const rows: TxRow[] = [];
       for (const item of flat) {
@@ -202,22 +170,41 @@ const MyWallet: React.FC = () => {
       }
       setTransactions(rows.slice(0, 10));
     } catch {
-      setProfile(null);
-      setSummary(null);
       setTransactions([]);
-      setWalletImageUrl(null);
     } finally {
-      if (pull) {
-        setRefreshing(false);
-      } else {
-        setLoading(false);
-      }
+      setTransactionsLoading(false);
     }
   }, []);
 
+  const loadWalletData = useCallback(
+    async (opts?: { isPullRefresh?: boolean }) => {
+      const pull = opts?.isPullRefresh ?? false;
+      if (pull) {
+        setRefreshing(true);
+      }
+      try {
+        await Promise.all([
+          revalidateProfile(),
+          revalidateWallet(),
+          revalidateWalletImage(),
+          loadTransactions(),
+        ]);
+      } finally {
+        if (pull) {
+          setRefreshing(false);
+        }
+      }
+    },
+    [revalidateProfile, revalidateWallet, revalidateWalletImage, loadTransactions],
+  );
+
   useEffect(() => {
-    loadWalletData();
-  }, [loadWalletData]);
+    loadTransactions();
+  }, [loadTransactions]);
+
+  const hasCachedCoreData = summary !== null && profile !== null;
+  const loading =
+    !hasCachedCoreData && (summaryLoading || profileLoading || transactionsLoading);
 
   const personal = profile?.personal_info;
   const work = profile?.work_stats;
@@ -273,7 +260,9 @@ const MyWallet: React.FC = () => {
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
-              onRefresh={() => loadWalletData({ isPullRefresh: true })}
+              onRefresh={() => {
+                void loadWalletData({ isPullRefresh: true });
+              }}
               colors={[PRIMARY]}
               tintColor={PRIMARY}
             />
@@ -308,8 +297,15 @@ const MyWallet: React.FC = () => {
               </TouchableOpacity>
             </View>
             <View style={styles.balanceIconWrap} accessibilityRole="image" accessibilityLabel="Wallet">
-              {walletImageUrl ? (
-                <Image source={{ uri: walletImageUrl }} style={styles.balanceWalletImage} resizeMode="contain" />
+              {walletImageLoading ? (
+                <ActivityIndicator color={PRIMARY} />
+              ) : walletImageUrl ? (
+                <Image
+                  source={{ uri: walletImageUrl }}
+                  style={styles.balanceWalletImage}
+                  resizeMode="contain"
+                  fadeDuration={0}
+                />
               ) : (
                 <MaterialCommunityIcons name="wallet" size={ms(56)} color={PRIMARY} />
               )}

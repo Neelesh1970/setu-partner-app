@@ -92,3 +92,14 @@ export const BACKGROUND_IMAGE_API_ID = 3;
 
 /** My Wallet illustration (`/background-images/:id`, CMS title `wallet`) */
 export const WALLET_BACKGROUND_IMAGE_API_ID = 5;
+
+/** Request Categories — Register New User card (`/background-images/:id`, CMS title `Register New User`) */
+export const REGISTER_NEW_USER_CATEGORY_IMAGE_API_ID = 9;
+
+/** Request Categories — Upcoming Visits & Tests card (`/background-images/:id`, CMS title `existing user`) */
+export const EXISTING_USER_CATEGORY_IMAGE_API_ID = 10;
+
+/** IOT device pairing intro (`/background-images/:id`) */
+export const BMI_DEVICE_IMAGE_API_ID = 11;
+export const PULSE_OXIMETER_DEVICE_IMAGE_API_ID = 12;
+export const AUTO_REFRACTOMETER_DEVICE_IMAGE_API_ID = 13;

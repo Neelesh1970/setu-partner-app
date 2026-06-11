@@ -3,6 +3,9 @@ import { clearSession } from '../store/authSlice';
 import { store } from '../store';
 import { clearAuthData } from '../Utils/storage';
 import { navigationRef } from '../navigation/navigationRef';
+import { clearBackgroundImages } from '../features/backgroundImage/backgroundImageSlice';
+import { clearWallet } from '../features/wallet/walletSlice';
+import { clearProfile } from '../features/profile/profileSlice';
 
 let logoutInFlight: Promise<void> | null = null;
 
@@ -21,6 +24,9 @@ export function logoutUser(): Promise<void> {
       // best-effort clear
     }
     store.dispatch(clearSession());
+    store.dispatch(clearBackgroundImages());
+    store.dispatch(clearWallet());
+    store.dispatch(clearProfile());
     if (navigationRef.isReady()) {
       navigationRef.dispatch(
         CommonActions.reset({

@@ -5,6 +5,7 @@ import walletReducer from '../features/wallet/walletSlice';
 import bookingReducer from '../features/booking/bookingSlice';
 import profileReducer from '../features/profile/profileSlice';
 import preventiveReducer from '../features/preventive/preventiveSlice';
+import backgroundImageReducer from '../features/backgroundImage/backgroundImageSlice';
 
 export const store = configureStore({
   reducer: {
@@ -14,6 +15,7 @@ export const store = configureStore({
     booking: bookingReducer,
     profile: profileReducer,
     preventive: preventiveReducer,
+    backgroundImage: backgroundImageReducer,
   },
 });
 

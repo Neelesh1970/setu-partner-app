@@ -28,8 +28,9 @@ import { requestBlePermissionsAndroid } from '../../Utils/requestBlePermissionsA
 import { resolveLabIotPerformTestScreen } from '../../Utils/labIotPerformTest';
 import { setPendingCompletedBookingItemId } from '../../Utils/multiDeviceSession';
 import PreventiveHealthHeader from '../Home/PreventiveUser/PreventiveHealthHeader';
-import pulseOxymeterPng from '../../assets/iot/pulse_oxymeter.png';
 import { COLORS, SPACING } from '../../Constants/theme';
+import { PULSE_OXIMETER_DEVICE_IMAGE_API_ID } from '../../Constants/homeMockData';
+import { useBackgroundImageUrl } from '../../hooks/useBackgroundImageUrl';
 import { BleError, BleErrorCode, BleManager } from 'react-native-ble-plx';
 import type { Device, Subscription } from 'react-native-ble-plx';
 import styles from './Oxymeter.styles';
@@ -408,15 +409,25 @@ const PulseOximeterPairScreen: React.FC<PulseOximeterPairScreenProps> = ({
   const { width, height } = useWindowDimensions();
   const sidePad = Math.min(24, Math.max(16, width * 0.04));
   const compact = height < 640;
+  const { url: pulseOximeterImageUrl, loading: pulseOximeterImageLoading } =
+    useBackgroundImageUrl(PULSE_OXIMETER_DEVICE_IMAGE_API_ID);
 
   return (
     <View style={styles.oxLightRoot}>
       <View style={[styles.oxLightImageWrap, { paddingHorizontal: sidePad }]}>
-        <Image
-          source={pulseOxymeterPng}
-          style={styles.oxLightHeroImage}
-          resizeMode="contain"
-        />
+        {pulseOximeterImageLoading ? (
+          <View style={styles.oxLightHeroImage}>
+            <ActivityIndicator color={COLORS.PRIMARY} />
+          </View>
+        ) : pulseOximeterImageUrl ? (
+          <Image
+            source={{ uri: pulseOximeterImageUrl }}
+            style={styles.oxLightHeroImage}
+            resizeMode="contain"
+          />
+        ) : (
+          <View style={styles.oxLightHeroImage} />
+        )}
       </View>
 
       <View

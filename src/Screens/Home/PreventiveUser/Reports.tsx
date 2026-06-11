@@ -16,6 +16,7 @@ import {
   TextInput,
   Linking,
   Alert,
+  RefreshControl,
   unstable_batchedUpdates,
 } from 'react-native';
 import ReactNativeBlobUtil from 'react-native-blob-util';
@@ -312,6 +313,7 @@ const Reports: React.FC = () => {
   const [appliedTimes, setAppliedTimes] = useState<string[]>([]);
   const [rows, setRows] = useState<ReportRow[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
@@ -380,9 +382,12 @@ const Reports: React.FC = () => {
   const showCustomRange = draftTimes.includes('Custom Range');
 
   const fetchReports = useCallback(
-    async (page = 1, limit = REPORTS_PER_PAGE) => {
+    async (page = 1, limit = REPORTS_PER_PAGE, opts?: { skipLoading?: boolean }) => {
       const seq = ++requestSeq.current;
-      setIsLoading(true);
+      const showLoading = !opts?.skipLoading;
+      if (showLoading) {
+        setIsLoading(true);
+      }
       try {
         const rangePayload = toRangeParam(appliedTimes);
         // Fetch reports and completed patients in parallel so we can show
@@ -446,13 +451,22 @@ const Reports: React.FC = () => {
         setRows([]);
         setTotalPages(1);
       } finally {
-        if (seq === requestSeq.current) {
+        if (seq === requestSeq.current && showLoading) {
           setIsLoading(false);
         }
       }
     },
     [appliedTests, appliedTimes, customFrom, customTo],
   );
+
+  const onPullRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await fetchReports(currentPage, REPORTS_PER_PAGE, { skipLoading: true });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchReports, currentPage]);
 
   const goToPage = useCallback(
     (page: number) => {
@@ -831,6 +845,14 @@ const Reports: React.FC = () => {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onPullRefresh}
+              colors={[PRIMARY]}
+              tintColor={PRIMARY}
+            />
+          }
           ListEmptyComponent={
             !isLoading ? (
               <View style={styles.emptyStateWrap}>

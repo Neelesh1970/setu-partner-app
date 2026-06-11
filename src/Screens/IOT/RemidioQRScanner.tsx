@@ -29,8 +29,9 @@ import type { RootStackParamList } from '../../navigation/types';
 import { postRemidioQrResult } from '../../api/iotDeviceResults';
 import axiosInstance from '../../api/axiosInstance';
 import { setPendingCompletedBookingItemId } from '../../Utils/multiDeviceSession';
-import autoRefractometerImg from '../../assets/iot/auto_refractometer.png';
 import { COLORS } from '../../Constants/theme';
+import { AUTO_REFRACTOMETER_DEVICE_IMAGE_API_ID } from '../../Constants/homeMockData';
+import { useBackgroundImageUrl } from '../../hooks/useBackgroundImageUrl';
 import PreventiveHealthHeader from '../Home/PreventiveUser/PreventiveHealthHeader';
 import DeviceEntryScreen from '../Home/Components/DeviceEntryScreen';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -71,6 +72,8 @@ const RemidioQRScanner = ({ onBack }: RemidioQRScannerProps) => {
   const routeBookingId = route.params?.bookingId ?? null;
   const routeIsMultiDevice = route.params?.isMultiDevice ?? false;
   const [showScanner, setShowScanner] = useState(false);
+  const { url: autoRefractometerImageUrl, loading: autoRefractometerImageLoading } =
+    useBackgroundImageUrl(AUTO_REFRACTOMETER_DEVICE_IMAGE_API_ID);
 
   const [qrValue, setQrValue] = useState<string>('');
   const [scanned, setScanned] = useState<boolean>(false);
@@ -242,7 +245,8 @@ const RemidioQRScanner = ({ onBack }: RemidioQRScannerProps) => {
     return (
       <DeviceEntryScreen
         headerTitle="Auto Refractometer "
-        image={autoRefractometerImg}
+        imageUrl={autoRefractometerImageUrl}
+        imageLoading={autoRefractometerImageLoading}
         title="Pair Device"
         description="We’ve detected your Auto Refractometer. Please allow camera access and scan the QR code on the device."
         buttonText="Allow Camera"
