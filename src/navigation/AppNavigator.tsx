@@ -27,6 +27,7 @@ import RegisterDob from '../Screens/Authentication/RegisterDob';
 import RegisterGender from '../Screens/Authentication/RegisterGender';
 import {
   LazyBloodPressure,
+  LazyAshaDevice,
   LazyOxymeter,
   LazyPreventivePayment,
   LazyRegisterPlans,
@@ -180,6 +181,7 @@ const AppNavigator: React.FC = () => {
         <Stack.Screen name="ScaleDevice" component={LazyScaleDevice} />
         <Stack.Screen name="RemidioQRScanner" component={LazyRemidioQRScanner} />
         <Stack.Screen name="BloodPressure" component={LazyBloodPressure} />
+        <Stack.Screen name="AshaDevice" component={LazyAshaDevice} />
         <Stack.Screen name="DeviceSelect" component={DeviceSelectScreen} />
       </Stack.Navigator>
     </NavigationContainer>

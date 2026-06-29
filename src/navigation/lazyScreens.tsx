@@ -43,3 +43,4 @@ export const LazyOxymeter = lazyScreen(() => import('../Screens/IOT/Oxymeter'));
 export const LazyScaleDevice = lazyScreen(() => import('../Screens/IOT/ScaleDevice'));
 export const LazyBloodPressure = lazyScreen(() => import('../Screens/IOT/BloodPressure'));
 export const LazyRemidioQRScanner = lazyScreen(() => import('../Screens/IOT/RemidioQRScanner'));
+export const LazyAshaDevice = lazyScreen(() => import('../Screens/IOT/AshaDevice'));

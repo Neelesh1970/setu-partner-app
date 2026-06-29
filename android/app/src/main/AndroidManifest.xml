@@ -25,6 +25,11 @@
         android:name="android.hardware.bluetooth_le"
         android:required="false" />
 
+    <!-- Bluetooth Classic (RFCOMM / SPP) -->
+    <uses-feature
+        android:name="android.hardware.bluetooth"
+        android:required="false" />
+
     <!-- ================= BLE PERMISSIONS ================= -->
 
     <!-- Required for ALL Android versions -->

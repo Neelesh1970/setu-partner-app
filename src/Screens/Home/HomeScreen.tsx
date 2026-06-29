@@ -28,6 +28,11 @@ import { logStoredSessionToConsole } from '../../Utils/storage';
 import { pickBackendDeviceByTestName } from '../../Utils/pickBackendDeviceByTestName';
 import { applyLabIotPerformTestNavigation } from '../../Utils/labIotPerformTest';
 import {
+  BASE_URL,
+  PREVENTIVE_BASE_URL,
+  REGISTER_BASE_URL,
+} from '../../api/apiConfig';
+import {
   resolveWalletBalance,
   resolveWalletCurrency,
 } from '../../api/labWalletApi';
@@ -686,6 +691,20 @@ const HomeScreen: React.FC = () => {
     void logStoredSessionToConsole('[Home / Lab worker dashboard]', 'labWorkerHome');
   }, []);
 
+  useEffect(() => {
+    console.log('[HomeScreen] Configured API base URLs:', {
+      BASE_URL,
+      REGISTER_BASE_URL,
+      PREVENTIVE_BASE_URL,
+    });
+    console.log('[HomeScreen] APIs on this screen use BASE_URL:', BASE_URL, {
+      labPatients: 'lab/patients',
+      labProfile: 'lab/profile',
+      walletSummary: 'lab/wallet/summary',
+      backgroundImages: 'background-images/:id',
+    });
+  }, []);
+
   const balanceAmountText = formatHomeWalletMoney(
     resolveWalletBalance(walletSummary),
     resolveWalletCurrency(walletSummary),
@@ -714,6 +733,10 @@ const HomeScreen: React.FC = () => {
     navigation.navigate('Reports');
   }, [navigation]);
 
+  const goAshaDevice = useCallback(() => {
+    navigation.navigate('AshaDevice');
+  }, [navigation]);
+
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.PRIMARY} />
@@ -727,6 +750,19 @@ const HomeScreen: React.FC = () => {
             onAvatarPress={() => navigation.navigate('Profile')}
             rightSlot={
               <View style={styles.headerActions}>
+                <TouchableOpacity
+                  onPress={goAshaDevice}
+                  style={styles.headerAction}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Asha Device"
+                >
+                  <Ionicons
+                    name="bluetooth-outline"
+                    size={24}
+                    color={COLORS.WHITE}
+                  />
+                </TouchableOpacity>
                 <TouchableOpacity
                   onPress={goReports}
                   style={styles.headerAction}

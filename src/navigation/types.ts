@@ -127,4 +127,5 @@ export type RootStackParamList = {
      *  Only this field is passed on navigate-back — devices/packages are preserved via param merge. */
     completedBookingItemId?: string | null;
   };
+  AshaDevice: undefined;
 };
