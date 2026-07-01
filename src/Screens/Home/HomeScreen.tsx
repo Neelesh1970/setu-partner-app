@@ -10,9 +10,10 @@ import {
   ActivityIndicator,
   StatusBar,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS, FONT_SIZE, SPACING } from '../../Constants/theme';
 import {
@@ -24,9 +25,10 @@ import {
   WALLET_STATIC,
 } from '../../Constants/homeMockData';
 import { RootStackParamList } from '../../navigation/types';
-import { logStoredSessionToConsole } from '../../Utils/storage';
+import { getLabUserId, logStoredSessionToConsole } from '../../Utils/storage';
 import { pickBackendDeviceByTestName } from '../../Utils/pickBackendDeviceByTestName';
 import { applyLabIotPerformTestNavigation } from '../../Utils/labIotPerformTest';
+import { runGenvcarePerformTestIfApplicable } from '../../Utils/genvcarePerformTest';
 import {
   BASE_URL,
   PREVENTIVE_BASE_URL,
@@ -687,23 +689,15 @@ const HomeScreen: React.FC = () => {
     loadHomePatientPreviews();
   }, [loadHomePatientPreviews]);
 
-  useEffect(() => {
-    void logStoredSessionToConsole('[Home / Lab worker dashboard]', 'labWorkerHome');
-  }, []);
-
-  useEffect(() => {
-    console.log('[HomeScreen] Configured API base URLs:', {
-      BASE_URL,
-      REGISTER_BASE_URL,
-      PREVENTIVE_BASE_URL,
-    });
-    console.log('[HomeScreen] APIs on this screen use BASE_URL:', BASE_URL, {
-      labPatients: 'lab/patients',
-      labProfile: 'lab/profile',
-      walletSummary: 'lab/wallet/summary',
-      backgroundImages: 'background-images/:id',
-    });
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      void (async () => {
+        const labUserId = (await getLabUserId()) ?? '(not set)';
+        console.log('[HomeScreen] Focus — lab_user_id:', labUserId);
+        await logStoredSessionToConsole('[Home / Lab worker dashboard]', 'labWorkerHome');
+      })();
+    }, []),
+  );
 
   const balanceAmountText = formatHomeWalletMoney(
     resolveWalletBalance(walletSummary),
@@ -800,7 +794,15 @@ const HomeScreen: React.FC = () => {
           registerNewUserIconLoading={registerNewUserIconLoading}
           existingUserIconUrl={existingUserIconUrl}
           existingUserIconLoading={existingUserIconLoading}
-          onRegisterNewUser={() => navigation.navigate('RegisterWithOtp')}
+          onRegisterNewUser={() => {
+            const preventiveApiBase = `${PREVENTIVE_BASE_URL.replace(/\/$/, '')}/api/v1`;
+            console.log('[Home] Register New User pressed → navigating to SignUp');
+            console.log('[Home] Register New User — API base used:', preventiveApiBase);
+            console.log('[Home] Register New User — PREVENTIVE_BASE_URL:', PREVENTIVE_BASE_URL);
+            console.log('[Home] Register New User — send-otp URL:', `${preventiveApiBase}/patient-auth/register/send-otp`);
+            console.log('[Home] (other app bases) BASE_URL:', BASE_URL, '| REGISTER_BASE_URL:', REGISTER_BASE_URL);
+            navigation.navigate('SignUp');
+          }}
           onUpcomingVisitsAndTests={() =>
             navigation.navigate('TestActivity', { initialTab: 'upcoming' })
           }
@@ -833,7 +835,16 @@ const HomeScreen: React.FC = () => {
                 time={item.time}
                 paymentStatus={item.paymentStatus}
                 paymentMethod={item.paymentMethod}
-                onSeeDetails={() => goTestDetails(item.labPatientRowId, 'upcoming')}
+                onSeeDetails={() => {
+                  const bookingDetail = homeUpcomingRaw.find(
+                    p => String(p.id ?? '').trim() === item.labPatientRowId.trim(),
+                  );
+                  console.log(
+                    "[HomeScreen] Today's upcoming — See details — full booking detail:",
+                    JSON.stringify(bookingDetail ?? item, null, 2),
+                  );
+                  goTestDetails(item.labPatientRowId, 'upcoming');
+                }}
                 onPerformTest={() => {
                   const allDevices = [
                     ...item.devices,
@@ -848,22 +859,44 @@ const HomeScreen: React.FC = () => {
                     });
                     return;
                   }
-                  if (
-                    applyLabIotPerformTestNavigation(
-                      navigation.navigate,
-                      item.deviceId,
-                      item.deviceName,
-                      item.bookingItemId,
-                      item.bookingId,
-                    )
-                  ) {
-                    return;
-                  }
-                  const nameForMsg = item.deviceName ?? item.testName;
-                  setDeviceUnavailablePopupMessage(
-                    `No device available for this ${nameForMsg}`,
-                  );
-                  setDeviceUnavailablePopupVisible(true);
+                  void (async () => {
+                    try {
+                      const genvcareHandled = await runGenvcarePerformTestIfApplicable(
+                        navigation.navigate,
+                        {
+                          bookingId: item.bookingId,
+                          deviceId: item.deviceId,
+                          deviceName: item.deviceName ?? item.testName,
+                          logContext: "HomeScreen Today's upcoming Perform Test",
+                        },
+                      );
+                      if (genvcareHandled) {
+                        return;
+                      }
+                      if (
+                        applyLabIotPerformTestNavigation(
+                          navigation.navigate,
+                          item.deviceId,
+                          item.deviceName,
+                          item.bookingItemId,
+                          item.bookingId,
+                        )
+                      ) {
+                        return;
+                      }
+                      const nameForMsg = item.deviceName ?? item.testName;
+                      setDeviceUnavailablePopupMessage(
+                        `No device available for this ${nameForMsg}`,
+                      );
+                      setDeviceUnavailablePopupVisible(true);
+                    } catch (error: unknown) {
+                      const err = error as { message?: string };
+                      Alert.alert(
+                        'Perform Test',
+                        err?.message ?? 'Could not start the test. Please try again.',
+                      );
+                    }
+                  })();
                 }}
                 performDisabled={item.performDisabled}
               />

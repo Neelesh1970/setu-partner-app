@@ -23,7 +23,7 @@ const DashboardScreen: React.FC = () => {
     setLoggingOut(true);
     try {
       await clearAuthData();
-      navigation.reset({ index: 0, routes: [{ name: 'RegisterWithOtp' }] });
+      navigation.reset({ index: 0, routes: [{ name: 'SignUp' }] });
     } finally {
       setLoggingOut(false);
     }
@@ -75,7 +75,7 @@ const DashboardScreen: React.FC = () => {
 
         <TouchableOpacity
           style={styles.registerMoreBtn}
-          onPress={() => navigation.navigate('RegisterWithOtp')}
+          onPress={() => navigation.navigate('SignUp')}
           activeOpacity={0.85}
         >
           <Text style={styles.registerMoreText}>+ Register Another User</Text>

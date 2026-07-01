@@ -17,39 +17,21 @@ export type RootStackParamList = {
   NewUserRegistration: undefined;
   NewuserRegister: undefined;
   TestHome: undefined;
+  SignUp: undefined;
+  SignUpOTP: {
+    mobile: string;
+    registrationData: {
+      mobile: string;
+      name: string;
+      last_name: string;
+      gender: string;
+      age: number;
+      dob: string;
+    };
+  };
   RegisterOtp: { mobile: string };
   UserDetails: undefined;
   PremiumPrice: undefined;
-  RegisterWithOtp: undefined;
-  RegisterVerifyOtp: {
-    mobile: string;
-    alreadyRegistered: boolean;
-  };
-  RegisterName: {
-    mobile: string;
-    lab_user_id: string;
-  };
-  RegisterDob: {
-    mobile: string;
-    firstName: string;
-    lastName: string;
-    lab_user_id: string;
-  };
-  RegisterGender: {
-    mobile: string;
-    firstName: string;
-    lastName: string;
-    dob: string;
-    lab_user_id: string;
-  };
-  RegisterPlans: {
-    mobile: string;
-    firstName: string;
-    lastName: string;
-    dob: string;
-    gender: string;
-    lab_user_id: string;
-  };
   Dashboard: undefined;
   PreventiveHealth: undefined;
   PreventiveHealthHeader: undefined;
@@ -128,4 +110,5 @@ export type RootStackParamList = {
     completedBookingItemId?: string | null;
   };
   AshaDevice: undefined;
+  GenvReportWaiting: { bookingId?: string } | undefined;
 };
