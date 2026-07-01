@@ -20,17 +20,13 @@ import TestHomeScreen from '../Screens/Test/TestHomeScreen';
 import RegisterOtp from '../Screens/Authentication/RegisterOtp';
 import UserDetailsScreen from '../Screens/Authentication/UserDetailsScreen';
 import PremiumPrice from '../Screens/Authentication/PremiumPrice';
-import RegisterWithOtp from '../Screens/Authentication/RegisterWithOtp';
-import RegisterVerifyOtp from '../Screens/Authentication/RegisterVerifyOtp';
-import RegisterName from '../Screens/Authentication/RegisterName';
-import RegisterDob from '../Screens/Authentication/RegisterDob';
-import RegisterGender from '../Screens/Authentication/RegisterGender';
+import SignUP from '../Screens/PreventiveHealth/Auth/SignUP';
+import SignUpOTP from '../Screens/PreventiveHealth/Auth/SignUpOTP';
 import {
   LazyBloodPressure,
   LazyAshaDevice,
   LazyOxymeter,
   LazyPreventivePayment,
-  LazyRegisterPlans,
   LazyRemidioQRScanner,
   LazyReports,
   LazyScaleDevice,
@@ -51,6 +47,7 @@ import PreventiveBookingSummary from '../Screens/Home/PreventiveUser/PreventiveB
 import TestDetails from '../Screens/Home/PreventiveUser/TestDetails';
 import CashPaymentReceive from '../Screens/Home/PreventiveUser/CashPaymentReceive';
 import DeviceSelectScreen from '../Screens/Home/PreventiveUser/DeviceSelectScreen';
+import GenvReportWaiting from '../Screens/Home/PreventiveUser/GenvReportWaiting';
 import { COLORS } from '../Constants/theme';
 import { getAuthToken, getUser, getUserID } from '../Utils/storage';
 import { navigationRef } from './navigationRef';
@@ -147,12 +144,8 @@ const AppNavigator: React.FC = () => {
         <Stack.Screen name="RegisterOtp" component={RegisterOtp} />
         <Stack.Screen name="UserDetails" component={UserDetailsScreen} />
         <Stack.Screen name="PremiumPrice" component={PremiumPrice} />
-        <Stack.Screen name="RegisterWithOtp" component={RegisterWithOtp} />
-        <Stack.Screen name="RegisterVerifyOtp" component={RegisterVerifyOtp} />
-        <Stack.Screen name="RegisterName" component={RegisterName} />
-        <Stack.Screen name="RegisterDob" component={RegisterDob} />
-        <Stack.Screen name="RegisterGender" component={RegisterGender} />
-        <Stack.Screen name="RegisterPlans" component={LazyRegisterPlans} />
+        <Stack.Screen name="SignUp" component={SignUP} />
+        <Stack.Screen name="SignUpOTP" component={SignUpOTP} />
         <Stack.Screen name="Dashboard" component={DashboardScreen} />
         <Stack.Screen name="PreventiveHealth" component={PreventiveHealth} />
         <Stack.Screen name="PreventiveHealthHeader" component={PreventiveHealthHeader} />
@@ -183,6 +176,7 @@ const AppNavigator: React.FC = () => {
         <Stack.Screen name="BloodPressure" component={LazyBloodPressure} />
         <Stack.Screen name="AshaDevice" component={LazyAshaDevice} />
         <Stack.Screen name="DeviceSelect" component={DeviceSelectScreen} />
+        <Stack.Screen name="GenvReportWaiting" component={GenvReportWaiting} />
       </Stack.Navigator>
     </NavigationContainer>
   );

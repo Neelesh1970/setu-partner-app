@@ -122,6 +122,12 @@ const OtpVerificationScreen: React.FC = () => {
       );
 
       if (authFlow === 'login') {
+        const labUserId = response.user?.id ? String(response.user.id) : '(not set)';
+        console.log('[OtpVerification] Lab worker login complete');
+        console.log('[OtpVerification] lab_user_id:', labUserId);
+        console.log('[OtpVerification] access_token:', response.token ?? '(not set)');
+        console.log('[OtpVerification] refresh_token:', response.refreshToken ?? '(not set)');
+
         // Route by KYC state: approved → Home; submitted → pending; else → upload docs.
         try {
           const verification = await getIdentityVerificationStatus();

@@ -28,14 +28,9 @@ import {
   getPackages,
   getScreenings,
   getCart,
-  getPatients,
 } from "./PreventiveHealthAPI";
-import {
-  logStoredSessionToConsole,
-  savePreventivePatientId,
-  getPreventivePatientId,
-  getUserID,
-} from "../../../Utils/storage";
+import { resolvePreventivePatientUuid } from "../../../Utils/preventivePatient";
+import { logStoredSessionToConsole } from "../../../Utils/storage";
 
 const { width } = Dimensions.get("window");
 
@@ -83,19 +78,7 @@ export default function PreventiveHealth({ navigation }: any) {
 
   const syncPreventivePatientFromApi = useCallback(async () => {
     try {
-      const cached = await getPreventivePatientId();
-      if (cached) {
-      }
-
-      const [list, appUserId] = await Promise.all([getPatients(), getUserID()]);
-      if (!list.length) return;
-
-      const match = list.find((p) => String(p?.user_id) === String(appUserId));
-      const row = match ?? (list.length === 1 ? list[0] : null);
-      if (!row?.id) return;
-
-      const pid = String(row.id);
-      await savePreventivePatientId(pid);
+      await resolvePreventivePatientUuid();
     } catch (e) {
     }
   }, []);

@@ -12,8 +12,10 @@ const KEYS = {
   REGISTERED_PATIENT_APP_USER_ID: 'registered_patient_app_user_id',
   USER_ID: 'user_id',
   LAB_USER_ID: 'lab_user_id',
-  /** UUID from GET /patients `data[].id` for the member session (not vendor lab user id). */
+  /** Patient row UUID for bookings (`GET /patients[].id` or `/patient-auth/profile` `id`). Not the same key as `registered_patient_app_user_id` unless the API uses one id for both. */
   PREVENTIVE_PATIENT_ID: 'preventive_patient_id',
+  /** `registered_patient_app_user_id` that owns `preventive_patient_id` (invalidates stale cache on new Register New User). */
+  PREVENTIVE_PATIENT_OWNER_APP_USER_ID: 'preventive_patient_owner_app_user_id',
   /** JSON map `centerId|yyyy-mm-dd` → slot UUIDs successfully booked on this device (slots API can lag). */
   PREVENTIVE_CLIENT_BOOKED_SLOTS: 'preventive_client_booked_slots_v1',
   PRIMARY_CENTER_ID: 'primary_center_id',
@@ -154,6 +156,17 @@ export const saveRegisteredPatientAuthData = async (
   appUserId: string,
   refreshToken?: string,
 ): Promise<void> => {
+  const previousAppUserId = await getRegisteredPatientAppUserId();
+  if (
+    previousAppUserId &&
+    String(previousAppUserId).trim() !== String(appUserId).trim()
+  ) {
+    await AsyncStorage.multiRemove([
+      KEYS.PREVENTIVE_PATIENT_ID,
+      KEYS.PREVENTIVE_PATIENT_OWNER_APP_USER_ID,
+    ]);
+  }
+
   const pairs: [string, string][] = [
     [KEYS.REGISTERED_PATIENT_AUTH_TOKEN, token],
     [KEYS.REGISTERED_PATIENT_APP_USER_ID, appUserId],
@@ -176,12 +189,43 @@ export const getRegisteredPatientAppUserId = async (): Promise<string | null> =>
   return AsyncStorage.getItem(KEYS.REGISTERED_PATIENT_APP_USER_ID);
 };
 
-export const savePreventivePatientId = async (patientId: string): Promise<void> => {
-  await AsyncStorage.setItem(KEYS.PREVENTIVE_PATIENT_ID, String(patientId).trim());
+/**
+ * App user id for preventive member APIs (`GET /patients`, bookings).
+ * After Home → Register New User, `user_id` stays the lab worker; the patient id lives in
+ * `registered_patient_app_user_id`.
+ */
+export const getPreventiveMemberAppUserId = async (): Promise<string | null> => {
+  const registered = await getRegisteredPatientAppUserId();
+  if (registered != null && String(registered).trim()) {
+    return String(registered).trim();
+  }
+  return getUserID();
+};
+
+export const savePreventivePatientId = async (
+  patientId: string,
+  ownerAppUserId?: string | null,
+): Promise<void> => {
+  const pairs: [string, string][] = [
+    [KEYS.PREVENTIVE_PATIENT_ID, String(patientId).trim()],
+  ];
+  const owner =
+    ownerAppUserId != null && String(ownerAppUserId).trim()
+      ? String(ownerAppUserId).trim()
+      : await getPreventiveMemberAppUserId();
+  if (owner) {
+    pairs.push([KEYS.PREVENTIVE_PATIENT_OWNER_APP_USER_ID, owner]);
+  }
+  await AsyncStorage.multiSet(pairs);
 };
 
 export const getPreventivePatientId = async (): Promise<string | null> => {
   const v = await AsyncStorage.getItem(KEYS.PREVENTIVE_PATIENT_ID);
+  return v != null && String(v).trim() ? String(v).trim() : null;
+};
+
+export const getPreventivePatientOwnerAppUserId = async (): Promise<string | null> => {
+  const v = await AsyncStorage.getItem(KEYS.PREVENTIVE_PATIENT_OWNER_APP_USER_ID);
   return v != null && String(v).trim() ? String(v).trim() : null;
 };
 
@@ -484,6 +528,7 @@ export const clearAuthData = async (): Promise<void> => {
     KEYS.USER_ID,
     KEYS.LAB_USER_ID,
     KEYS.PREVENTIVE_PATIENT_ID,
+    KEYS.PREVENTIVE_PATIENT_OWNER_APP_USER_ID,
     KEYS.PREVENTIVE_CLIENT_BOOKED_SLOTS,
     KEYS.PRIMARY_CENTER_ID,
   ]);

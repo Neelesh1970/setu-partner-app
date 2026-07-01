@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   Platform,
+  type StyleProp,
+  type ViewStyle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Ionicons from "react-native-vector-icons/Ionicons";
@@ -24,6 +26,10 @@ interface CustomPopupProps {
   cancelText?: string;
   secondaryConfirmText?: string;
   onSecondaryConfirm?: () => void;
+  iconColor?: string;
+  compact?: boolean;
+  style?: StyleProp<ViewStyle>;
+  confirmStyle?: StyleProp<ViewStyle>;
 }
 
 const ICON_COLOR = COLORS.PRIMARY;
@@ -52,6 +58,10 @@ const CustomPopup: React.FC<CustomPopupProps> = ({
   cancelText,
   secondaryConfirmText,
   onSecondaryConfirm,
+  iconColor = ICON_COLOR,
+  compact = false,
+  style,
+  confirmStyle,
 }) => {
   return (
     <Modal
@@ -65,25 +75,28 @@ const CustomPopup: React.FC<CustomPopupProps> = ({
         <PopupBackdrop />
 
         <SafeAreaView style={styles.centered}>
-          <View style={styles.container}>
+          <View style={[styles.container, compact && styles.containerCompact, style]}>
             {showIcon ? (
               <View
                 style={[
                   styles.iconBadge,
-                  { backgroundColor: `${ICON_COLOR}14` },
+                  compact && styles.iconBadgeCompact,
+                  { backgroundColor: `${iconColor}14` },
                 ]}
               >
                 <Ionicons
                   name={iconName}
-                  size={50}
-                  color={ICON_COLOR}
+                  size={compact ? 40 : 50}
+                  color={iconColor}
                 />
               </View>
             ) : null}
 
-            <Text style={styles.title}>{title}</Text>
+            <Text style={[styles.title, compact && styles.titleCompact]}>{title}</Text>
 
-            {!!message && <Text style={styles.message}>{message}</Text>}
+            {!!message && (
+              <Text style={[styles.message, compact && styles.messageCompact]}>{message}</Text>
+            )}
 
             {cancelText ? (
               <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
@@ -100,7 +113,10 @@ const CustomPopup: React.FC<CustomPopupProps> = ({
               </TouchableOpacity>
             ) : null}
 
-            <TouchableOpacity style={styles.confirmButton} onPress={onConfirm}>
+            <TouchableOpacity
+              style={[styles.confirmButton, confirmStyle]}
+              onPress={onConfirm}
+            >
               <Text style={styles.confirmText}>{confirmText}</Text>
             </TouchableOpacity>
           </View>
@@ -138,6 +154,10 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 10,
   },
+  containerCompact: {
+    paddingVertical: 20,
+    paddingHorizontal: 18,
+  },
   iconBadge: {
     width: 64,
     height: 64,
@@ -146,12 +166,22 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 14,
   },
+  iconBadgeCompact: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    marginBottom: 10,
+  },
   title: {
     fontSize: 18,
     fontWeight: "600",
     marginBottom: 8,
     textAlign: "center",
     color: "#111827",
+  },
+  titleCompact: {
+    fontSize: 16,
+    marginBottom: 6,
   },
   message: {
     fontSize: 14,
@@ -160,6 +190,10 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     lineHeight: 21,
     paddingHorizontal: 2,
+  },
+  messageCompact: {
+    marginBottom: 14,
+    fontSize: 13,
   },
   cancelButton: {
     width: "100%",

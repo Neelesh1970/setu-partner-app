@@ -131,18 +131,140 @@ export const getCart = async () => {
   return res.data?.data || null;
 };
 
-export const getPatients = async (): Promise<
-  Array<{
-    id?: string;
-    user_id?: string | number;
-    full_name?: string;
-    [key: string]: unknown;
-  }>
-> => {
+export type PreventivePatientRow = {
+  id?: string;
+  user_id?: string | number;
+  full_name?: string;
+  phone_number?: string;
+  phone?: string;
+  mobile?: string;
+  patient_id?: string;
+  [key: string]: unknown;
+};
+
+function normalizePatientRows(raw: unknown): PreventivePatientRow[] {
+  if (raw == null) return [];
+  if (Array.isArray(raw)) return raw as PreventivePatientRow[];
+  if (typeof raw === "object") {
+    const o = raw as Record<string, unknown>;
+    if (Array.isArray(o.patients)) return o.patients as PreventivePatientRow[];
+    if (Array.isArray(o.items)) return o.items as PreventivePatientRow[];
+    if (Array.isArray(o.data)) return o.data as PreventivePatientRow[];
+    if (o.patient && typeof o.patient === "object") {
+      return [o.patient as PreventivePatientRow];
+    }
+    if (o.id != null || o.user_id != null || o.patient_id != null) {
+      return [o as PreventivePatientRow];
+    }
+  }
+  return [];
+}
+
+export const getPatients = async (): Promise<PreventivePatientRow[]> => {
   const headers = await getAuthHeaders();
   const res = await api.get("/patients", { headers });
-  const data = res.data?.data;
-  return Array.isArray(data) ? data : [];
+  if (__DEV__) {
+    console.log(
+      "[PreventiveHealthAPI] getPatients raw:",
+      JSON.stringify(res.data, null, 2),
+    );
+  }
+  const rows = normalizePatientRows(res.data?.data ?? res.data);
+  if (__DEV__) {
+    console.log(
+      "[PreventiveHealthAPI] getPatients — row count:",
+      rows.length,
+      rows[0] ? `first id=${String(rows[0].id ?? "—")} user_id=${String(rows[0].user_id ?? "—")}` : "",
+    );
+  }
+  return rows;
+};
+
+function normalizeAddressRows(raw: unknown): PreventivePatientRow[] {
+  if (raw == null) return [];
+  if (Array.isArray(raw)) return raw as PreventivePatientRow[];
+  if (typeof raw === "object") {
+    const o = raw as Record<string, unknown>;
+    if (Array.isArray(o.addresses)) return o.addresses as PreventivePatientRow[];
+    if (Array.isArray(o.items)) return o.items as PreventivePatientRow[];
+    if (Array.isArray(o.data)) return o.data as PreventivePatientRow[];
+    if (o.id != null) return [o as PreventivePatientRow];
+  }
+  return [];
+}
+
+/** GET /addresses — booking body needs `address_id`; rows may include linked `patient_id`. */
+export const getPatientAddresses = async (): Promise<PreventivePatientRow[]> => {
+  const headers = await getAuthHeaders();
+  try {
+    const res = await api.get("/addresses", { headers });
+    if (__DEV__) {
+      console.log(
+        "[PreventiveHealthAPI] getPatientAddresses raw:",
+        JSON.stringify(res.data, null, 2),
+      );
+    }
+    return normalizeAddressRows(res.data?.data ?? res.data);
+  } catch {
+    if (__DEV__) {
+      console.log("[PreventiveHealthAPI] getPatientAddresses — request failed");
+    }
+    return [];
+  }
+};
+
+/**
+ * POST /patients — creates the preventive `patients` row for a newly registered member
+ * when GET /patients is empty (patient-auth/profile only has auth account id).
+ */
+export const ensurePreventivePatientRecord = async (): Promise<PreventivePatientRow | null> => {
+  const headers = await getAuthHeaders();
+  try {
+    const res = await api.post("/patients", {}, { headers });
+    if (__DEV__) {
+      console.log(
+        "[PreventiveHealthAPI] POST /patients raw:",
+        JSON.stringify(res.data, null, 2),
+      );
+    }
+    const rows = normalizePatientRows(res.data?.data ?? res.data?.patient ?? res.data);
+    return rows[0] ?? null;
+  } catch (e) {
+    if (__DEV__) {
+      console.log("[PreventiveHealthAPI] POST /patients failed:", e);
+    }
+    return null;
+  }
+};
+
+/** Current member profile after patient-auth register (Bearer = registered patient token). */
+export const getPatientAuthProfile = async (): Promise<PreventivePatientRow | null> => {
+  const headers = await getAuthHeaders();
+  try {
+    const res = await api.get("/patient-auth/profile", { headers });
+    if (__DEV__) {
+      console.log(
+        "[PreventiveHealthAPI] getPatientAuthProfile raw:",
+        JSON.stringify(res.data, null, 2),
+      );
+    }
+    const rows = normalizePatientRows(
+      res.data?.data ?? res.data?.user ?? res.data?.patient ?? res.data,
+    );
+    const row = rows[0] ?? null;
+    if (__DEV__) {
+      console.log(
+        "[PreventiveHealthAPI] getPatientAuthProfile —",
+        row ? `id=${String(row.id ?? "—")} user_id=${String(row.user_id ?? "—")}` : "no row",
+      );
+    }
+    return row;
+  } catch {
+    if (__DEV__) {
+      console.log("[PreventiveHealthAPI] getPatientAuthProfile — request failed");
+    }
+    return null;
+  }
 };
 
 /** Lab scope: `GET /lab/patients?filter=...` (Bearer + x-refresh-token via axiosInstance). */

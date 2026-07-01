@@ -10,6 +10,7 @@ import {
   BackHandler,
   ActivityIndicator,
   useWindowDimensions,
+  Alert,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ms, vs } from 'react-native-size-matters';
@@ -33,6 +34,7 @@ import {
 import CustomPopup from '../Components/CustomPopup';
 import { pickBackendDeviceByTestName } from '../../../Utils/pickBackendDeviceByTestName';
 import { applyLabIotPerformTestNavigation } from '../../../Utils/labIotPerformTest';
+import { runGenvcarePerformTestIfApplicable } from '../../../Utils/genvcarePerformTest';
 
 const PRIMARY = COLORS.PRIMARY;
 const CARD_BORDER = '#E5E7EB';
@@ -91,7 +93,7 @@ const TestDetails: React.FC = () => {
   }, []);
 
 
-  const onContinue = useCallback(() => {
+  const onContinue = useCallback(async () => {
     if (!patient) return;
 
     const standaloneDevices = patient.devices ?? [];
@@ -123,21 +125,42 @@ const TestDetails: React.FC = () => {
             testName: labPatientTestLabel(patient),
           });
 
-    if (
-      applyLabIotPerformTestNavigation(
+    try {
+      const genvcareHandled = await runGenvcarePerformTestIfApplicable(
         navigation.navigate,
-        picked.deviceId,
-        picked.deviceName,
-        picked.bookingItemId,
-        patient?.booking_id ?? null,
-      )
-    ) {
-      return;
-    }
+        {
+          bookingId: patient.booking_id,
+          deviceId: picked.deviceId,
+          deviceName: picked.deviceName,
+          logContext: 'TestDetails Continue',
+        },
+      );
+      if (genvcareHandled) {
+        return;
+      }
 
-    const nameForMsg = picked.deviceName ?? labPatientTestLabel(patient);
-    setDeviceUnavailablePopupMessage(`No device available for this ${nameForMsg}`);
-    setDeviceUnavailablePopupVisible(true);
+      if (
+        applyLabIotPerformTestNavigation(
+          navigation.navigate,
+          picked.deviceId,
+          picked.deviceName,
+          picked.bookingItemId,
+          patient?.booking_id ?? null,
+        )
+      ) {
+        return;
+      }
+
+      const nameForMsg = picked.deviceName ?? labPatientTestLabel(patient);
+      setDeviceUnavailablePopupMessage(`No device available for this ${nameForMsg}`);
+      setDeviceUnavailablePopupVisible(true);
+    } catch (error: unknown) {
+      const err = error as { message?: string };
+      Alert.alert(
+        'Continue',
+        err?.message ?? 'Could not start the test. Please try again.',
+      );
+    }
   }, [navigation, patient]);
 
   useEffect(() => {

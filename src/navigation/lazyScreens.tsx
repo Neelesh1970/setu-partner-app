@@ -36,9 +36,6 @@ export const LazyReports = lazyScreen(() => import('../Screens/Home/PreventiveUs
 export const LazyPreventivePayment = lazyScreen(() =>
   import('../Screens/Home/PreventiveUser/PreventivePayment'),
 );
-export const LazyRegisterPlans = lazyScreen(() =>
-  import('../Screens/Authentication/RegisterPlans'),
-);
 export const LazyOxymeter = lazyScreen(() => import('../Screens/IOT/Oxymeter'));
 export const LazyScaleDevice = lazyScreen(() => import('../Screens/IOT/ScaleDevice'));
 export const LazyBloodPressure = lazyScreen(() => import('../Screens/IOT/BloodPressure'));
