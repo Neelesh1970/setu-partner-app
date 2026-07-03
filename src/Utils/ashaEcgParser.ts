@@ -18,8 +18,27 @@ export function classifyAshaEcgPayload(payload: string): AshaEcgPayloadKind {
   if (!clean) return 'unknown';
   if (clean === 'W') return 'wave-start';
   if (/^C_.*#$/i.test(clean)) return 'status';
-  if (clean.length >= 2) return 'samples';
+  if (isAshaEcgBinaryPayload(payload)) return 'samples';
   return 'unknown';
+}
+
+/** Detects Asha ECG binary stream (`\\` + amplitude pairs), not text vitals like O_99_85_#. */
+export function isAshaEcgBinaryPayload(payload: string): boolean {
+  const clean = String(payload || '').trim();
+  if (!clean) return false;
+  if (clean === 'W') return true;
+  if (/^C_.*#$/i.test(clean)) return true;
+
+  const bytes = payloadToBytes(payload);
+  if (bytes.length < 4) return false;
+
+  let delimiterHits = 0;
+  for (let i = 0; i + 1 < bytes.length; i += 2) {
+    if (bytes[i] === BACKSLASH_BYTE) delimiterHits += 1;
+  }
+
+  const expectedPairs = Math.floor(bytes.length / 2);
+  return expectedPairs >= 2 && delimiterHits / expectedPairs >= 0.5;
 }
 
 /**

@@ -25,9 +25,14 @@ export const BACKEND_NIBP_DEVICE_ID =
   '86a40bfb-c313-4d1d-8231-3349af35146b';
 export const BACKEND_NIBP_DEVICE_NAME = 'NIBP';
 
+/** Backend integration id for ASHA screening kit → `AshaDevice` screen. */
+export const BACKEND_ASHA_DEVICE_ID =
+  'f1b2c3d4-e5f6-7890-abcd-1234567890ef';
+export const BACKEND_ASHA_DEVICE_NAME = 'ASHA Health Screening Kit';
+
 export type LabIotPerformTestScreen = keyof Pick<
   RootStackParamList,
-  'Oxymeter' | 'ScaleDevice' | 'RemidioQRScanner' | 'BloodPressure'
+  'Oxymeter' | 'ScaleDevice' | 'RemidioQRScanner' | 'BloodPressure' | 'AshaDevice'
 >;
 
 function normalizeDeviceId(deviceId?: string | null): string {
@@ -74,6 +79,15 @@ export function resolveLabIotPerformTestScreen(
     name.includes('refractometer')
   ) {
     return 'RemidioQRScanner';
+  }
+
+  if (
+    id === BACKEND_ASHA_DEVICE_ID ||
+    name === BACKEND_ASHA_DEVICE_NAME.toLowerCase() ||
+    name.includes('asha') ||
+    name.includes('screening kit')
+  ) {
+    return 'AshaDevice';
   }
 
   return null;
@@ -130,6 +144,15 @@ export function applyLabIotPerformTestNavigation(
     navigate('BloodPressure', {
       deviceId: deviceId ?? null,
       deviceName: deviceName ?? null,
+      bookingItemId: bookingItemId ?? null,
+      bookingId: bookingId ?? null,
+      isMultiDevice: isMultiDevice ?? false,
+    });
+    return true;
+  }
+  if (screen === 'AshaDevice') {
+    navigate('AshaDevice', {
+      deviceId: deviceId ?? null,
       bookingItemId: bookingItemId ?? null,
       bookingId: bookingId ?? null,
       isMultiDevice: isMultiDevice ?? false,

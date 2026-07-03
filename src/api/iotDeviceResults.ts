@@ -164,3 +164,82 @@ export async function postRemidioQrResult(
     throw err;
   }
 }
+
+// ─── ASHA Health Screening Kit ────────────────────────────────────────────────
+
+export type AshaBloodPressureResult = {
+  systolic: number;
+  diastolic: number;
+  map: number;
+  pulse_rate: number;
+};
+
+export type AshaPulseOximeterResult = {
+  spo2: number;
+  pulse_rate: number;
+  perfusion_index?: number;
+};
+
+export type AshaThermometerResult = {
+  temperature: number;
+  unit: 'F' | 'C';
+};
+
+export type AshaGlucometerResult = {
+  blood_glucose: number;
+  test_type: string;
+  unit: string;
+};
+
+export type AshaStethoscopeResult = {
+  audio_base64: string;
+  format: string;
+  audio_mime?: string;
+  byte_count: number;
+  sample_count: number;
+  sample_rate?: number;
+  beat_count: number;
+  samples?: number[];
+  status?: string;
+};
+
+export type AshaResultData = {
+  blood_pressure?: AshaBloodPressureResult;
+  pulse_oximeter?: AshaPulseOximeterResult;
+  thermometer?: AshaThermometerResult;
+  glucometer?: AshaGlucometerResult;
+  stethoscope?: AshaStethoscopeResult;
+};
+
+export type PostAshaResultArgs = {
+  deviceId: string;
+  bookingItemId: string;
+  resultData: AshaResultData;
+};
+
+export type PostAshaResultResponse = {
+  success?: boolean;
+  message?: string;
+  data?: unknown;
+};
+
+/**
+ * POST `devices/:deviceId/asha-results` with the lab worker session
+ * (Bearer + x-refresh-token automatically attached by `axiosInstance`).
+ */
+export async function postAshaResult(
+  args: PostAshaResultArgs,
+): Promise<PostAshaResultResponse> {
+  const { deviceId, bookingItemId, resultData } = args;
+  const path = `devices/${encodeURIComponent(deviceId)}/asha-results`;
+  const body = {
+    booking_item_id: bookingItemId,
+    result_data: resultData,
+  };
+  try {
+    const res = await axiosInstance.post<PostAshaResultResponse>(path, body);
+    return res.data ?? {};
+  } catch (err) {
+    throw err;
+  }
+}
