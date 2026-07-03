@@ -155,10 +155,11 @@ export function subscribeClassicDeviceData(
   onData: (payload: string) => void,
 ): BluetoothEventSubscription {
   return device.onDataReceived(event => {
-    const payload = String(event.data ?? '').trim();
-    if (payload) {
-      onData(payload);
-    }
+    const raw = event.data;
+    if (raw === null || raw === undefined) return;
+    const payload = typeof raw === 'string' ? raw : String(raw);
+    if (!payload.length) return;
+    onData(payload);
   });
 }
 

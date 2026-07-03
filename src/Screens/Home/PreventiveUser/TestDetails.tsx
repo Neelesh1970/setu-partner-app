@@ -10,7 +10,6 @@ import {
   BackHandler,
   ActivityIndicator,
   useWindowDimensions,
-  Alert,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ms, vs } from 'react-native-size-matters';
@@ -85,6 +84,8 @@ const TestDetails: React.FC = () => {
 
   const [deviceUnavailablePopupVisible, setDeviceUnavailablePopupVisible] =
     useState(false);
+  const [deviceUnavailablePopupTitle, setDeviceUnavailablePopupTitle] =
+    useState('Device Unavailable');
   const [deviceUnavailablePopupMessage, setDeviceUnavailablePopupMessage] =
     useState('');
 
@@ -125,42 +126,41 @@ const TestDetails: React.FC = () => {
             testName: labPatientTestLabel(patient),
           });
 
-    try {
-      const genvcareHandled = await runGenvcarePerformTestIfApplicable(
-        navigation.navigate,
-        {
-          bookingId: patient.booking_id,
-          deviceId: picked.deviceId,
-          deviceName: picked.deviceName,
-          logContext: 'TestDetails Continue',
-        },
-      );
-      if (genvcareHandled) {
-        return;
-      }
-
-      if (
-        applyLabIotPerformTestNavigation(
-          navigation.navigate,
-          picked.deviceId,
-          picked.deviceName,
-          picked.bookingItemId,
-          patient?.booking_id ?? null,
-        )
-      ) {
-        return;
-      }
-
-      const nameForMsg = picked.deviceName ?? labPatientTestLabel(patient);
-      setDeviceUnavailablePopupMessage(`No device available for this ${nameForMsg}`);
-      setDeviceUnavailablePopupVisible(true);
-    } catch (error: unknown) {
-      const err = error as { message?: string };
-      Alert.alert(
-        'Continue',
-        err?.message ?? 'Could not start the test. Please try again.',
-      );
+    const genvcareResult = await runGenvcarePerformTestIfApplicable(
+      navigation.navigate,
+      {
+        bookingId: patient.booking_id,
+        deviceId: picked.deviceId,
+        deviceName: picked.deviceName,
+        logContext: 'TestDetails Continue',
+      },
+    );
+    if (genvcareResult.status === 'success') {
+      return;
     }
+    if (genvcareResult.status === 'vendor_server_error') {
+      setDeviceUnavailablePopupTitle(genvcareResult.title);
+      setDeviceUnavailablePopupMessage(genvcareResult.message);
+      setDeviceUnavailablePopupVisible(true);
+      return;
+    }
+
+    if (
+      applyLabIotPerformTestNavigation(
+        navigation.navigate,
+        picked.deviceId,
+        picked.deviceName ?? labPatientTestLabel(patient),
+        picked.bookingItemId,
+        patient?.booking_id ?? null,
+      )
+    ) {
+      return;
+    }
+
+    const nameForMsg = picked.deviceName ?? labPatientTestLabel(patient);
+    setDeviceUnavailablePopupTitle('Device Unavailable');
+    setDeviceUnavailablePopupMessage(`No device available for this ${nameForMsg}`);
+    setDeviceUnavailablePopupVisible(true);
   }, [navigation, patient]);
 
   useEffect(() => {
@@ -390,7 +390,7 @@ const TestDetails: React.FC = () => {
         isVisible={deviceUnavailablePopupVisible}
         onClose={closeDeviceUnavailablePopup}
         onConfirm={closeDeviceUnavailablePopup}
-        title="Device Unavailable"
+        title={deviceUnavailablePopupTitle}
         message={deviceUnavailablePopupMessage}
         showIcon={false}
       />

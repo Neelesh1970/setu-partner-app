@@ -34,9 +34,6 @@ const GenvReportWaiting: React.FC = () => {
 
   useFocusEffect(
     useCallback(() => {
-      console.log('[GenvReportWaiting] Screen focused — bookingId:', bookingId || '(none)');
-      console.log('[GenvReportWaiting] Waiting for report generation…');
-
       let isNavigating = false;
       const handleBack = () => {
         if (isNavigating) return true;

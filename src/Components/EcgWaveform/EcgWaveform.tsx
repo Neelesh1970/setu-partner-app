@@ -22,6 +22,7 @@ type Point = { x: number; y: number };
 type EcgWaveformProps = {
   samples: number[];
   sampleCountLabel?: string;
+  showFullWave?: boolean;
 };
 
 function buildLanePoints(
@@ -165,9 +166,16 @@ const EcgLeadLane: React.FC<EcgLeadLaneProps> = ({ samples, color, width }) => {
   );
 };
 
-const EcgWaveform: React.FC<EcgWaveformProps> = ({ samples, sampleCountLabel }) => {
+const EcgWaveform: React.FC<EcgWaveformProps> = ({
+  samples,
+  sampleCountLabel,
+  showFullWave = false,
+}) => {
   const [plotWidth, setPlotWidth] = useState(0);
-  const visibleSamples = useMemo(() => samples.slice(-VISIBLE_SAMPLES), [samples]);
+  const visibleSamples = useMemo(
+    () => (showFullWave ? samples : samples.slice(-VISIBLE_SAMPLES)),
+    [samples, showFullWave],
+  );
   const { lead1, lead2 } = useMemo(() => splitEcgLeads(visibleSamples), [visibleSamples]);
 
   const onPlotLayout = useCallback((event: LayoutChangeEvent) => {

@@ -44,6 +44,11 @@ import {
 import axiosInstance from '../../../api/axiosInstance';
 import { pickBackendDeviceByTestName } from '../../../Utils/pickBackendDeviceByTestName';
 import { applyLabIotPerformTestNavigation } from '../../../Utils/labIotPerformTest';
+import {
+  runGenvcarePerformTestIfApplicable,
+  GENVCARE_REPORT_IN_PROGRESS_TITLE,
+  GENVCARE_REPORT_IN_PROGRESS_MESSAGE,
+} from '../../../Utils/genvcarePerformTest';
 
 const PRIMARY = COLORS.PRIMARY;
 const PAGE_BG = '#F3F4F6';
@@ -238,9 +243,14 @@ const TestActivity: React.FC = () => {
   const openReportSeqRef = useRef(0);
   const [deviceUnavailablePopupVisible, setDeviceUnavailablePopupVisible] = useState(false);
   const [deviceUnavailablePopupMessage, setDeviceUnavailablePopupMessage] = useState('');
+  const [genvcareVendorPopupVisible, setGenvcareVendorPopupVisible] = useState(false);
 
   const closeDeviceUnavailablePopup = useCallback(() => {
     setDeviceUnavailablePopupVisible(false);
+  }, []);
+
+  const closeGenvcareVendorPopup = useCallback(() => {
+    setGenvcareVendorPopupVisible(false);
   }, []);
 
 
@@ -514,21 +524,40 @@ const TestActivity: React.FC = () => {
               testName: labPatientTestLabel(p),
             });
 
-      if (
-        applyLabIotPerformTestNavigation(
+      void (async () => {
+        const genvcareResult = await runGenvcarePerformTestIfApplicable(
           navigation.navigate,
-          picked.deviceId,
-          picked.deviceName,
-          picked.bookingItemId,
-          p.booking_id ?? null,
-        )
-      ) {
-        return;
-      }
+          {
+            bookingId: p.booking_id,
+            deviceId: picked.deviceId,
+            deviceName: picked.deviceName,
+            logContext: 'TestActivity Perform Test',
+          },
+        );
+        if (genvcareResult.status === 'success') {
+          return;
+        }
+        if (genvcareResult.status === 'vendor_server_error') {
+          setGenvcareVendorPopupVisible(true);
+          return;
+        }
 
-      const nameForMsg = picked.deviceName ?? labPatientTestLabel(p);
-      setDeviceUnavailablePopupMessage(`No device available for this ${nameForMsg}`);
-      setDeviceUnavailablePopupVisible(true);
+        if (
+          applyLabIotPerformTestNavigation(
+            navigation.navigate,
+            picked.deviceId,
+            picked.deviceName ?? labPatientTestLabel(p),
+            picked.bookingItemId,
+            p.booking_id ?? null,
+          )
+        ) {
+          return;
+        }
+
+        const nameForMsg = picked.deviceName ?? labPatientTestLabel(p);
+        setDeviceUnavailablePopupMessage(`No device available for this ${nameForMsg}`);
+        setDeviceUnavailablePopupVisible(true);
+      })();
     },
     [navigation.navigate],
   );
@@ -775,6 +804,15 @@ const TestActivity: React.FC = () => {
         title="Device Unavailable"
         message={deviceUnavailablePopupMessage}
         showIcon={false}
+      />
+      <CustomPopup
+        isVisible={genvcareVendorPopupVisible}
+        onClose={closeGenvcareVendorPopup}
+        onConfirm={closeGenvcareVendorPopup}
+        title={GENVCARE_REPORT_IN_PROGRESS_TITLE}
+        message={GENVCARE_REPORT_IN_PROGRESS_MESSAGE}
+        iconName="alert-circle-outline"
+        showIcon
       />
     </>
   );
