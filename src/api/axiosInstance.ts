@@ -55,6 +55,8 @@ export function isLabWorkerApiPath(url: string | undefined): boolean {
     base.startsWith('reports/') ||
     /** IOT device result submissions (qr-results, pulse-oxymeter-results, etc.) use lab-worker session. */
     base.startsWith('devices/') ||
+  /** Lab worker booking detail (e.g. hospital MRN for Genvcare scans). */
+    (base.startsWith('bookings/') && !base.includes('/pay/')) ||
     base === 'identity-verification'
   );
 }

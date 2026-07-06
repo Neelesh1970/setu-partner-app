@@ -69,15 +69,12 @@ export function isGenvcareScanDevice(
 
 
 export type GenvcarePerformTestArgs = {
-
   bookingId: string | null | undefined;
-
   deviceId?: string | null;
-
   deviceName?: string | null;
-
   logContext: string;
-
+  /** Called after perform-test API succeeds, before navigating to GenvReportWaiting. */
+  onSuccess?: () => void;
 };
 
 
@@ -111,7 +108,7 @@ export async function runGenvcarePerformTestIfApplicable(
 
 ): Promise<GenvcarePerformTestResult> {
 
-  const { bookingId, deviceId, deviceName } = args;
+  const { bookingId, deviceId, deviceName, onSuccess } = args;
 
   if (!isGenvcareScanDevice(deviceId, deviceName)) {
     return { status: 'skipped' };
@@ -127,7 +124,7 @@ export async function runGenvcarePerformTestIfApplicable(
 
   try {
     await axiosInstance.post(path, {});
-
+    onSuccess?.();
     navigate('GenvReportWaiting', { bookingId: bid });
 
     return { status: 'success' };

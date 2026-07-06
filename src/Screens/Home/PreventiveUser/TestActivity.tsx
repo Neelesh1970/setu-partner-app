@@ -49,6 +49,7 @@ import {
   GENVCARE_REPORT_IN_PROGRESS_TITLE,
   GENVCARE_REPORT_IN_PROGRESS_MESSAGE,
 } from '../../../Utils/genvcarePerformTest';
+import { getPatientBookingDevices } from '../../../Utils/labPatientGenvcare';
 
 const PRIMARY = COLORS.PRIMARY;
 const PAGE_BG = '#F3F4F6';
@@ -155,6 +156,7 @@ function UpcomingStyleTestCard({
   onSeeDetails,
   onPerformTest,
   performDisabled,
+  hospitalMrn,
 }: {
   patientName: string;
   patientId: string;
@@ -165,6 +167,7 @@ function UpcomingStyleTestCard({
   onSeeDetails: () => void;
   onPerformTest: () => void;
   performDisabled: boolean;
+  hospitalMrn?: string | null;
 }) {
   const isPaid = (paymentStatus || '').toLowerCase() === 'paid';
   const statusLabel = paymentStatus
@@ -185,6 +188,7 @@ function UpcomingStyleTestCard({
         </TouchableOpacity>
       </View>
       <Text style={styles.testName}>{testName}</Text>
+      {hospitalMrn ? <Text style={styles.mrnText}>MRN: {hospitalMrn}</Text> : null}
       <View style={styles.metaRow}>
         <View style={styles.metaLeft}>
           <Ionicons name="time-outline" size={ms(16)} color={PRIMARY} />
@@ -389,6 +393,19 @@ const TestActivity: React.FC = () => {
     }
     return out;
   }, [activeTab, rawPatients]);
+
+  const resolveCardHospitalMrn = useCallback((p: LabPatientRecord): string | null | undefined => {
+    const devices = getPatientBookingDevices(p);
+    const isSingleDevice =
+      devices.length === 1 ||
+      (devices.length === 0 &&
+        ((p.device_names?.length ?? 0) === 1 || (p.device_ids?.length ?? 0) === 1));
+    if (!isSingleDevice) {
+      return undefined;
+    }
+    const mrn = (p.hospital_mrn ?? '').trim();
+    return mrn || null;
+  }, []);
 
   const goTestDetails = useCallback(
     (p: LabPatientRecord) => {
@@ -633,6 +650,7 @@ const TestActivity: React.FC = () => {
                 onSeeDetails={() => goTestDetails(p)}
                 onPerformTest={() => handlePerformTest(p)}
                 performDisabled={false}
+                hospitalMrn={resolveCardHospitalMrn(p)}
               />
             ))}
           </View>
@@ -650,6 +668,7 @@ const TestActivity: React.FC = () => {
           onSeeDetails={() => goTestDetails(p)}
           onPerformTest={() => handlePerformTest(p)}
           performDisabled={!canPerformTestNow(p)}
+          hospitalMrn={resolveCardHospitalMrn(p)}
         />
       );
     },
@@ -658,6 +677,7 @@ const TestActivity: React.FC = () => {
       goTestDetails,
       handlePerformTest,
       openReportByBookingId,
+      resolveCardHospitalMrn,
     ],
   );
 
@@ -1008,6 +1028,12 @@ const styles = StyleSheet.create({
     fontSize: ms(14),
     color: TEXT_DARK,
     fontWeight: '400',
+  },
+  mrnText: {
+    marginTop: vs(4),
+    fontSize: ms(13),
+    fontWeight: '700',
+    color: PRIMARY,
   },
   metaRow: {
     flexDirection: 'row',

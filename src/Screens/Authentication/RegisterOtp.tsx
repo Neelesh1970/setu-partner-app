@@ -29,18 +29,11 @@ const RegisterOtp = () => {
             const newOtp = [...otp];
             newOtp[index] = text;
             setOtp(newOtp);
-
-            console.log(`[OTP INPUT] index: ${index}, value: ${text}`);
         }
     };
 
     const handleVerify = async () => {
         const otpValue = otp.join('');
-
-        console.log('-----------------------------');
-        console.log('[VERIFY OTP START]');
-        console.log('Mobile:', mobile);
-        console.log('OTP Entered:', otpValue);
 
         if (otpValue.length !== OTP_LENGTH) {
             Alert.alert('Invalid OTP', 'Please enter complete OTP');
@@ -50,28 +43,17 @@ const RegisterOtp = () => {
         setLoading(true);
 
         try {
-            console.log('[API CALL] /auth/loginWithSmartpingOtp');
-
             const res = await verifySmartpingOtp({
                 mobile,
                 otp: otpValue,
             });
-                
-            console.log('[API SUCCESS]');
-            console.log('Response:', res);
 
             navigation.navigate('UserDetails');
 
         } catch (error: any) {
-            console.log('[API ERROR]');
-            console.log('Error Message:', error?.message);
-            console.log('Full Error:', error);
-
             Alert.alert('Error', error?.message || 'OTP verification failed');
         } finally {
             setLoading(false);
-            console.log('[VERIFY OTP END]');
-            console.log('-----------------------------');
         }
     };
 

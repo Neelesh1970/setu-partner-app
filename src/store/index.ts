@@ -6,6 +6,7 @@ import bookingReducer from '../features/booking/bookingSlice';
 import profileReducer from '../features/profile/profileSlice';
 import preventiveReducer from '../features/preventive/preventiveSlice';
 import backgroundImageReducer from '../features/backgroundImage/backgroundImageSlice';
+import deviceSelectReducer from '../features/deviceSelect/deviceSelectSlice';
 
 export const store = configureStore({
   reducer: {
@@ -16,6 +17,7 @@ export const store = configureStore({
     profile: profileReducer,
     preventive: preventiveReducer,
     backgroundImage: backgroundImageReducer,
+    deviceSelect: deviceSelectReducer,
   },
 });
 

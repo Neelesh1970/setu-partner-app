@@ -29,11 +29,6 @@ import { pickBackendDeviceByTestName } from '../../Utils/pickBackendDeviceByTest
 import { applyLabIotPerformTestNavigation } from '../../Utils/labIotPerformTest';
 import { runGenvcarePerformTestIfApplicable } from '../../Utils/genvcarePerformTest';
 import {
-  BASE_URL,
-  PREVENTIVE_BASE_URL,
-  REGISTER_BASE_URL,
-} from '../../api/apiConfig';
-import {
   resolveWalletBalance,
   resolveWalletCurrency,
 } from '../../api/labWalletApi';
@@ -794,12 +789,6 @@ const HomeScreen: React.FC = () => {
           existingUserIconUrl={existingUserIconUrl}
           existingUserIconLoading={existingUserIconLoading}
           onRegisterNewUser={() => {
-            const preventiveApiBase = `${PREVENTIVE_BASE_URL.replace(/\/$/, '')}/api/v1`;
-            console.log('[Home] Register New User pressed → navigating to SignUp');
-            console.log('[Home] Register New User — API base used:', preventiveApiBase);
-            console.log('[Home] Register New User — PREVENTIVE_BASE_URL:', PREVENTIVE_BASE_URL);
-            console.log('[Home] Register New User — send-otp URL:', `${preventiveApiBase}/patient-auth/register/send-otp`);
-            console.log('[Home] (other app bases) BASE_URL:', BASE_URL, '| REGISTER_BASE_URL:', REGISTER_BASE_URL);
             navigation.navigate('SignUp');
           }}
           onUpcomingVisitsAndTests={() =>

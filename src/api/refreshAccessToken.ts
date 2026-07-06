@@ -51,8 +51,7 @@ export async function tryRefreshWithRefreshToken(
       timeout: 12_000,
     });
     return parseRefreshResponse(data);
-  } catch (e) {
-    console.log('[auth/refresh] failed', e);
+  } catch {
     return null;
   }
 }

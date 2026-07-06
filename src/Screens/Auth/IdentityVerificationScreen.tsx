@@ -11,10 +11,11 @@ import {
   StatusBar,
   RefreshControl,
   TouchableWithoutFeedback,
+  BackHandler,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { pick, types, isErrorWithCode, errorCodes, DocumentPickerResponse } from '@react-native-documents/picker';
 import PreventiveHealthHeader from '../Home/PreventiveUser/PreventiveHealthHeader';
@@ -69,6 +70,25 @@ const IdentityVerificationScreen: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [headerChecking, setHeaderChecking] = useState(false);
+
+  const goToWelcome = useCallback(() => {
+    navigation.reset({ index: 0, routes: [{ name: 'Welcome' }] });
+  }, [navigation]);
+
+  useEffect(() => {
+    navigation.setOptions({ gestureEnabled: false });
+  }, [navigation]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onHardwareBack = (): boolean => {
+        goToWelcome();
+        return true;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onHardwareBack);
+      return () => sub.remove();
+    }, [goToWelcome]),
+  );
 
   // Redirect to Home if approved; to VerificationPending only after documents were submitted.
   const checkStatusForRedirect = useCallback(async () => {
@@ -201,6 +221,7 @@ const IdentityVerificationScreen: React.FC = () => {
         <SafeAreaView edges={['top']} style={styles.headerSafe}>
           <PreventiveHealthHeader
             title="Identity Verification"
+            onBackPress={goToWelcome}
             rightSlot={
               <TouchableWithoutFeedback onPress={onHeaderRefresh} hitSlop={10}>
                 <View style={styles.headerIconBtn}>

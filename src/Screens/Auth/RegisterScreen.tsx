@@ -14,7 +14,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/types';
-import { Center, getCenters, sendRegistrationOtp } from '../../Services/authService';
+import {
+  Center,
+  getCenters,
+  sendRegistrationOtp,
+  getIdentityVerificationStatus,
+  hasSubmittedIdentityVerification,
+  isApprovedIdentityVerification,
+} from '../../Services/authService';
+import { getAuthToken, getUserID } from '../../Utils/storage';
 import PreventiveHealthHeader from '../Home/PreventiveUser/PreventiveHealthHeader';
 
 type RegisterNavProp = NativeStackNavigationProp<RootStackParamList, 'Register'>;
@@ -53,6 +61,34 @@ const RegisterScreen: React.FC = () => {
   const [centers, setCenters] = useState<Center[]>([]);
   const [showCenterDropdown, setShowCenterDropdown] = useState(false);
   const [centersLoading, setCentersLoading] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [token, userID] = await Promise.all([getAuthToken(), getUserID()]);
+        if (!token || !userID) {
+          return;
+        }
+        try {
+          const verification = await getIdentityVerificationStatus();
+          const record = verification?.data;
+          if (isApprovedIdentityVerification(record)) {
+            navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+            return;
+          }
+          if (hasSubmittedIdentityVerification(record)) {
+            navigation.replace('VerificationPending');
+            return;
+          }
+        } catch {
+          // OTP already verified — resume document upload.
+        }
+        navigation.replace('IdentityVerification');
+      } catch {
+        // Show registration form for new users.
+      }
+    })();
+  }, [navigation]);
 
   useEffect(() => {
     const fetchCenters = async () => {

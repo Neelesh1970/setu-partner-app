@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -10,8 +10,9 @@ import {
   ActivityIndicator,
   Image,
   RefreshControl,
+  BackHandler,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ms, vs, s } from 'react-native-size-matters';
@@ -234,6 +235,31 @@ const MyWallet: React.FC = () => {
   const registrationsCount = displayStr(work?.users_registered ?? undefined, '0');
   const testsCompletedCount = displayStr(work?.tests_completed ?? undefined, '0');
 
+  const handleBack = useCallback(() => {
+    navigation.goBack();
+  }, [navigation]);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      gestureEnabled: true,
+      ...(Platform.OS === 'ios' ? { fullScreenGestureEnabled: true } : {}),
+    });
+  }, [navigation]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = (): boolean => {
+        handleBack();
+        return true;
+      };
+      let sub: { remove: () => void } | undefined;
+      if (Platform.OS === 'android') {
+        sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      }
+      return () => sub?.remove();
+    }, [handleBack]),
+  );
+
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={PRIMARY} />
@@ -242,7 +268,7 @@ const MyWallet: React.FC = () => {
         <SafeAreaView edges={['top']} style={styles.headerSafe}>
           <PreventiveHealthHeader
             title="My wallet"
-            onBackPress={() => navigation.goBack()}
+            onBackPress={handleBack}
           />
         </SafeAreaView>
       </View>

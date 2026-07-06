@@ -210,8 +210,6 @@ const SignUpOTP: React.FC = () => {
       const data = response?.data;
 
       if (data?.success) {
-        console.log('[SignUpOTP] verify-otp raw:', JSON.stringify(data, null, 2));
-
         const accessToken = data?.token as string | undefined;
         const refreshToken = data?.refreshToken as string | undefined;
 
@@ -239,33 +237,14 @@ const SignUpOTP: React.FC = () => {
           (data?.user as { patient_id?: string } | undefined)?.patient_id;
         const userRecordId = (data?.user as { id?: string } | undefined)?.id;
 
-        console.log('[SignUpOTP] patient.id (for device test booking):', patientRowId ?? '(not found)');
-        console.log(
-          '[SignUpOTP] default_patient_id:',
-          (data as { default_patient_id?: string })?.default_patient_id ?? '(not set)',
-        );
-        console.log('[SignUpOTP] user.id (auth account):', userRecordId ?? userId ?? '(not set)');
-
         if (patientRowId && String(patientRowId).trim()) {
           await savePreventivePatientId(String(patientRowId).trim(), userId);
-          console.log(
-            '[SignUpOTP] saved preventive_patient_id for booking:',
-            String(patientRowId).trim(),
-          );
         } else if (
           userRecordId &&
           userId &&
           String(userRecordId).trim() !== String(userId).trim()
         ) {
           await savePreventivePatientId(String(userRecordId).trim(), userId);
-          console.log(
-            '[SignUpOTP] saved preventive_patient_id (fallback user record):',
-            String(userRecordId).trim(),
-          );
-        } else {
-          console.warn(
-            '[SignUpOTP] no patient.id in register response — device test booking may fail',
-          );
         }
 
         if (data?.user?.phone_number) {
@@ -284,11 +263,6 @@ const SignUpOTP: React.FC = () => {
             lab_user_id: labUserId,
           });
         }
-
-        console.log(
-          '[SignUpOTP] Registration complete — registered by lab user id:',
-          labUserId || '(not set)',
-        );
 
         navigation.reset({
           index: 1,

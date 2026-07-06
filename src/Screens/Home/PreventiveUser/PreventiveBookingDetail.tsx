@@ -20,26 +20,13 @@ import PreventiveHealthHeader from "./PreventiveHealthHeader";
 import AppSkeleton from "../Components/AppSkeleton";
 import { createPreventiveBooking, getSlots } from "./PreventiveHealthAPI";
 import { resolvePreventiveBookingIdentity } from "../../../Utils/preventivePatient";
-import { PREVENTIVE_BASE_URL } from "../../../api/apiConfig";
 import {
   getPrimaryCenterId,
   getPreventiveClientBookedSlotIds,
-  getPreventiveMemberAppUserId,
-  getPreventivePatientId,
-  getRegisteredPatientAuthToken,
-  getRegisteredPatientRefreshToken,
   recordPreventiveClientBookedSlot,
 } from "../../../Utils/storage";
 
 /** Booking API expects `patient_id` as the preventive patient UUID (`/patients[].id`), not the app user id (`user.id`). */
-
-const LOG_TAG = "[PreventiveBookingDetail]";
-const CREATE_BOOKING_URL = `${PREVENTIVE_BASE_URL.replace(/\/$/, "")}/api/v1/bookings`;
-
-function maskToken(token: string | null | undefined): string {
-  if (!token) return "(empty)";
-  return token.length > 20 ? `${token.slice(0, 20)}…[${token.length} chars]` : token;
-}
 
 function formatBookingApiError(e: unknown): string {
   const err = e as {
@@ -53,35 +40,10 @@ function formatBookingApiError(e: unknown): string {
   };
   const status = err?.response?.status;
   const apiMsg = err?.response?.data?.message;
-  const apiPath = err?.response?.data?.path;
-  const fullUrl = `${err?.config?.baseURL ?? ""}${err?.config?.url ?? ""}`;
-
-  console.error(`${LOG_TAG} ─── API ERROR ───`);
-  console.error(`${LOG_TAG} HTTP status:`, status, err?.response?.statusText ?? "");
-  console.error(`${LOG_TAG} API message:`, apiMsg ?? "—");
-  console.error(`${LOG_TAG} API path:`, apiPath ?? "—");
-  console.error(`${LOG_TAG} Request:`, err?.config?.method?.toUpperCase() ?? "?", fullUrl);
-  console.error(`${LOG_TAG} Request body:`, err?.config?.data ?? "—");
-  console.error(
-    `${LOG_TAG} Response body:`,
-    JSON.stringify(err?.response?.data ?? null, null, 2),
-  );
 
   if (status && apiMsg) return `${status}: ${apiMsg}`;
   if (status) return `HTTP ${status}`;
   return err?.message ?? "Booking failed";
-}
-
-function logBookingCurl(payload: Record<string, unknown>): void {
-  const body = JSON.stringify(payload);
-  console.log(`${LOG_TAG} ─── CURL (replace TOKEN / REFRESH) ───`);
-  console.log(
-    `curl -X POST "${CREATE_BOOKING_URL}" ` +
-      `-H "Content-Type: application/json" ` +
-      `-H "Authorization: Bearer TOKEN" ` +
-      `-H "x-refresh-token: REFRESH" ` +
-      `-d '${body}'`,
-  );
 }
 
 const COLORS = {
@@ -376,30 +338,10 @@ export default function PreventiveBookingDetail({ navigation }: any) {
   }, [reloadClientBookedSlots]);
 
   const onContinue = useCallback(async () => {
-    console.log(`${LOG_TAG} Continue pressed`);
-    console.log(`${LOG_TAG} UI state — date:`, selectedDateId, "slot:", selectedSlotId, "center:", centerId);
-
     try {
-      const [cachedPatientId, memberAppUserId, accessToken, refreshToken] =
-        await Promise.all([
-          getPreventivePatientId(),
-          getPreventiveMemberAppUserId(),
-          getRegisteredPatientAuthToken(),
-          getRegisteredPatientRefreshToken(),
-        ]);
-
-      console.log(`${LOG_TAG} Storage — cached preventive_patient_id:`, cachedPatientId ?? "null");
-      console.log(`${LOG_TAG} Storage — member app_user_id:`, memberAppUserId ?? "null");
-      console.log(`${LOG_TAG} Storage — patient access token:`, maskToken(accessToken));
-      console.log(`${LOG_TAG} Storage — patient refresh token:`, maskToken(refreshToken));
-
-      console.log(`${LOG_TAG} Resolving patient UUID + address (profile/patients APIs)…`);
       const { patientId, addressId } = await resolvePreventiveBookingIdentity();
-      console.log(`${LOG_TAG} Resolved patient_id for booking payload:`, patientId ?? "null");
-      console.log(`${LOG_TAG} Resolved address_id for booking payload:`, addressId ?? "null");
 
       if (!patientId) {
-        console.warn(`${LOG_TAG} Abort — no patient_id resolved`);
         Alert.alert(
           "Booking",
           "Could not find your patient profile. Please reopen Preventive Health and try again.",
@@ -407,22 +349,18 @@ export default function PreventiveBookingDetail({ navigation }: any) {
         return;
       }
       if (!centerId) {
-        console.warn(`${LOG_TAG} Abort — centerId missing`);
         Alert.alert("Booking", "Center is not configured. Please reopen Preventive Health.");
         return;
       }
       if (!selectedDateId) {
-        console.warn(`${LOG_TAG} Abort — no date selected`);
         return;
       }
       if (!selectedSlotId) {
-        console.warn(`${LOG_TAG} Abort — no slot selected`);
         return;
       }
 
       const chosen = slots.find((s) => s.id === selectedSlotId);
       if (!chosen || chosen.disabled) {
-        console.warn(`${LOG_TAG} Abort — slot missing or disabled`, chosen);
         return;
       }
 
@@ -438,20 +376,9 @@ export default function PreventiveBookingDetail({ navigation }: any) {
         payload.address_id = String(addressId);
       }
 
-      console.log(`${LOG_TAG} ─── CREATE BOOKING ───`);
-      console.log(`${LOG_TAG} POST ${CREATE_BOOKING_URL}`);
-      console.log(`${LOG_TAG} Payload:`, JSON.stringify(payload, null, 2));
-      if (patientId === memberAppUserId) {
-        console.warn(
-          `${LOG_TAG} Note: patient_id equals app_user_id — if API expects a separate patients-row id, booking may fail.`,
-        );
-      }
-      logBookingCurl(payload);
-
       setSubmitting(true);
       try {
         const res = await createPreventiveBooking(payload);
-        console.log(`${LOG_TAG} Booking API success response:`, JSON.stringify(res, null, 2));
 
         const bookingId =
           res?.data?.booking_id != null
@@ -461,14 +388,12 @@ export default function PreventiveBookingDetail({ navigation }: any) {
               : null;
         const ok = res?.success === true && !!bookingId;
         if (!ok) {
-          console.warn(`${LOG_TAG} Booking rejected — success=${String(res?.success)} bookingId=${bookingId ?? "null"}`);
           Alert.alert(
             "Booking",
             res?.message ?? "Could not confirm booking.",
           );
           return;
         }
-        console.log(`${LOG_TAG} Booking created — navigating to PreventiveCheckout, bookingId:`, bookingId);
         await recordPreventiveClientBookedSlot(
           String(centerId),
           String(selectedDateId),
@@ -481,7 +406,6 @@ export default function PreventiveBookingDetail({ navigation }: any) {
         setSubmitting(false);
       }
     } catch (e: unknown) {
-      console.error(`${LOG_TAG} Unexpected error in onContinue:`, e);
       Alert.alert("Booking", formatBookingApiError(e));
     }
   }, [centerId, navigation, selectedDateId, selectedSlotId, slots]);

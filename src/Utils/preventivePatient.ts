@@ -181,10 +181,6 @@ export async function resolvePreventiveBookingIdentity(): Promise<PreventiveBook
 
   const cachedPatientId = await readValidCachedPatientId(appUserId);
   if (cachedPatientId) {
-    console.log(
-      '[preventivePatient] using patient.id from Register New User (cached):',
-      cachedPatientId,
-    );
     return { patientId: cachedPatientId, addressId: null };
   }
 
@@ -205,9 +201,6 @@ export async function resolvePreventiveBookingIdentity(): Promise<PreventiveBook
       const row = pickFromPatientList(list, appUserId, registeredMobile) ?? list[0];
       const identity = identityFromRow(row, appUserId);
       if (identity.patientId) {
-        if (__DEV__) {
-          console.log('[preventivePatient] resolved from GET /patients:', identity);
-        }
         return persistIdentity(appUserId, identity);
       }
     }
@@ -216,9 +209,6 @@ export async function resolvePreventiveBookingIdentity(): Promise<PreventiveBook
     if (addresses.length) {
       const fromAddresses = identityFromAddressRows(addresses, appUserId);
       if (fromAddresses.patientId) {
-        if (__DEV__) {
-          console.log('[preventivePatient] resolved from GET /addresses:', fromAddresses);
-        }
         return persistIdentity(appUserId, fromAddresses);
       }
       if (fromAddresses.addressId && list.length) {
@@ -226,9 +216,6 @@ export async function resolvePreventiveBookingIdentity(): Promise<PreventiveBook
         const patientId = pickPatientsTableId(row, appUserId);
         if (patientId) {
           const identity = { patientId, addressId: fromAddresses.addressId };
-          if (__DEV__) {
-            console.log('[preventivePatient] patient from /patients + address from /addresses:', identity);
-          }
           return persistIdentity(appUserId, identity);
         }
       }
@@ -238,24 +225,13 @@ export async function resolvePreventiveBookingIdentity(): Promise<PreventiveBook
     if (profile) {
       const identity = identityFromRow(profile, appUserId);
       if (identity.patientId) {
-        if (__DEV__) {
-          console.log('[preventivePatient] resolved from profile:', identity);
-        }
         return persistIdentity(appUserId, identity);
       }
     }
-  } catch (e) {
-    if (__DEV__) {
-      console.log('[preventivePatient] resolve failed:', e);
-    }
+  } catch {
     return { patientId: null, addressId: null };
   }
 
-  if (__DEV__) {
-    console.warn(
-      '[preventivePatient] no patients-table id — profile id is auth account only; GET /patients empty',
-    );
-  }
   return { patientId: null, addressId: null };
 }
 
