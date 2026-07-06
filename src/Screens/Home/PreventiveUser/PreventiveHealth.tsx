@@ -83,15 +83,13 @@ export default function PreventiveHealth({ navigation }: any) {
     }
   }, []);
 
-  /* ================= LOG SCREEN OPEN ================= */
+  useEffect(() => {
+    void logStoredSessionToConsole("[PreventiveHealth]", "preventiveHealth");
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-
-      void (async () => {
-        await syncPreventivePatientFromApi();
-        await logStoredSessionToConsole("[PreventiveHealth]", "preventiveHealth");
-      })();
+      void syncPreventivePatientFromApi();
     }, [syncPreventivePatientFromApi])
   );
 

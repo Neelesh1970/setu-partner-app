@@ -183,7 +183,6 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
 
   const handleUpiPayment = useCallback(async (): Promise<void> => {
     if (!bookingId) {
-      console.warn("[PAY][UPI] ❌ bookingId is missing — aborting");
       Alert.alert("Payment", "Missing booking.");
       return;
     }
@@ -195,8 +194,6 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
       const order = extractUpiOrderFromResponse(orderRes);
 
       if (!order) {
-        console.warn("[PAY][UPI] ❌ extractUpiOrderFromResponse returned null");
-        console.warn("[PAY][UPI]    raw orderRes was :", JSON.stringify(orderRes, null, 2));
         Alert.alert(
           "Payment",
           (orderRes as { message?: string })?.message ??
@@ -229,7 +226,6 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
       const payload = extractSdkPaymentIds(sdkData as Record<string, unknown>);
 
       if (!payload) {
-        console.warn("[PAY][UPI] ❌ extractSdkPaymentIds returned null — sdkData was :", JSON.stringify(sdkData, null, 2));
         Alert.alert("Payment", "Missing payment details from Razorpay.");
         return;
       }
@@ -238,7 +234,6 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
       const verifyRes = await verifyRazorpay(bookingId, payload);
 
       if (verifyRes?.success !== true) {
-        console.warn("[PAY][UPI] ❌ verification failed — response :", JSON.stringify(verifyRes, null, 2));
         Alert.alert("Payment", verifyRes?.message ?? "Payment verification failed.");
         return;
       }
@@ -249,24 +244,9 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
         Alert.alert("Payment", "Payment cancelled.");
         return;
       }
-      // Print every useful field from the error
       const axiosErr = e as {
         message?: string;
-        code?: string;
-        response?: { status?: number; data?: unknown; headers?: unknown };
-        request?: unknown;
-        config?: { url?: string; method?: string; baseURL?: string; headers?: unknown; data?: unknown };
       };
-      console.error("[PAY][UPI] ❌ UNEXPECTED ERROR ──────────────────────────");
-      console.error("[PAY][UPI]    message          :", axiosErr?.message);
-      console.error("[PAY][UPI]    code             :", axiosErr?.code);
-      console.error("[PAY][UPI]    response.status  :", axiosErr?.response?.status);
-      console.error("[PAY][UPI]    response.data    :", JSON.stringify(axiosErr?.response?.data, null, 2));
-      console.error("[PAY][UPI]    request sent?    :", axiosErr?.request != null ? "yes" : "no (never left device)");
-      console.error("[PAY][UPI]    config.url       :", axiosErr?.config?.url);
-      console.error("[PAY][UPI]    config.baseURL   :", axiosErr?.config?.baseURL);
-      console.error("[PAY][UPI]    config.method    :", axiosErr?.config?.method);
-      console.error("[PAY][UPI]    full error dump  :", JSON.stringify(e, null, 2));
       const msg =
         axiosErr?.message ?? "Payment failed";
       Alert.alert("Payment", msg);
@@ -279,7 +259,6 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
 
   const handleCashPayment = useCallback(async (): Promise<void> => {
     if (!bookingId) {
-      console.warn("[PAY][CASH] ❌ bookingId is missing — aborting");
       Alert.alert("Payment", "Missing booking.");
       return;
     }
@@ -288,7 +267,6 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
       const res = await payCash(bookingId);
 
       if (res?.success !== true) {
-        console.warn("[PAY][CASH] ❌ success !== true — message :", res?.message);
         Alert.alert("Payment", res?.message ?? "Cash payment could not be recorded.");
         return;
       }
@@ -296,20 +274,7 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
     } catch (e: unknown) {
       const axiosErr = e as {
         message?: string;
-        code?: string;
-        response?: { status?: number; data?: unknown };
-        request?: unknown;
-        config?: { url?: string; method?: string; baseURL?: string };
       };
-      console.error("[PAY][CASH] ❌ UNEXPECTED ERROR ─────────────────────────");
-      console.error("[PAY][CASH]    message         :", axiosErr?.message);
-      console.error("[PAY][CASH]    code            :", axiosErr?.code);
-      console.error("[PAY][CASH]    response.status :", axiosErr?.response?.status);
-      console.error("[PAY][CASH]    response.data   :", JSON.stringify(axiosErr?.response?.data, null, 2));
-      console.error("[PAY][CASH]    request sent?   :", axiosErr?.request != null ? "yes" : "no (never left device)");
-      console.error("[PAY][CASH]    config.url      :", axiosErr?.config?.url);
-      console.error("[PAY][CASH]    config.baseURL  :", axiosErr?.config?.baseURL);
-      console.error("[PAY][CASH]    full error dump :", JSON.stringify(e, null, 2));
       Alert.alert("Payment", axiosErr?.message ?? "Failed to confirm cash payment");
     } finally {
       setPaying(false);
@@ -327,7 +292,6 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
     } else if (cashConfirmed) {
       // Second tap — navigate to summary
       if (!bookingId) {
-        console.warn("[PAY][CASH] ❌ bookingId missing on confirm tap");
         Alert.alert("Payment", "Missing booking.");
         return;
       }

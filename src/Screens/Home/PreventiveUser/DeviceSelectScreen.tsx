@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { consumePendingCompletedBookingItemId } from '../../../Utils/multiDeviceSession';
 import {
   View,
@@ -26,8 +26,20 @@ import { COLORS } from '../../../Constants/theme';
 import type { RootStackParamList } from '../../../navigation/types';
 import CustomPopup from '../Components/CustomPopup';
 import { applyLabIotPerformTestNavigation } from '../../../Utils/labIotPerformTest';
+import {
+  runGenvcarePerformTestIfApplicable,
+  isGenvcareScanDevice,
+} from '../../../Utils/genvcarePerformTest';
 import type { RawDeviceItem, RawPackageItem } from './PreventiveHealthAPI';
 import axiosInstance from '../../../api/axiosInstance';
+import { useAppDispatch, useAppSelector } from '../../../store/hooks';
+import {
+  hydrateDeviceSelectFromPayload,
+  markDeviceCompleted,
+} from '../../../features/deviceSelect/deviceSelectSlice';
+import { selectCompletedBookingItemIds } from '../../../features/deviceSelect/selectors';
+import { fetchBookingHospitalMrn } from '../../../features/booking/bookingSlice';
+import { bookingDevicesIncludeGenvcareScan } from '../../../Utils/labPatientGenvcare';
 
 const PRIMARY = COLORS.PRIMARY;
 const PAGE_BG = '#F3F4F6';
@@ -35,6 +47,7 @@ const CARD_BORDER = '#E5E7EB';
 const TEXT_DARK = '#111827';
 const DONE_GREEN = '#16A34A';
 const DONE_BG = '#DCFCE7';
+const TEXT_MUTED = '#6B7280';
 
 type DeviceSelectNav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -42,11 +55,17 @@ function DeviceCard({
   device,
   isDone,
   onPerform,
+  hospitalMrn,
 }: {
   device: RawDeviceItem;
   isDone: boolean;
   onPerform: (d: RawDeviceItem) => void;
+  hospitalMrn?: string | null;
 }) {
+  const showMrn =
+    !!hospitalMrn &&
+    isGenvcareScanDevice(device.device_id, device.device_name);
+
   return (
     <View style={[styles.card, isDone && styles.cardDone]}>
       <View style={styles.cardTopRow}>
@@ -57,9 +76,14 @@ function DeviceCard({
             <Ionicons name="hardware-chip-outline" size={ms(18)} color={PRIMARY} />
           )}
         </View>
-        <Text style={styles.deviceName} numberOfLines={2}>
-          {device.device_name}
-        </Text>
+        <View style={styles.deviceTitleCol}>
+          <Text style={styles.deviceName} numberOfLines={2}>
+            {device.device_name}
+          </Text>
+          {showMrn ? (
+            <Text style={styles.mrnText}>MRN: {hospitalMrn}</Text>
+          ) : null}
+        </View>
         {isDone && (
           <View style={styles.doneBadge}>
             <Text style={styles.doneBadgeText}>Saved</Text>
@@ -89,38 +113,72 @@ function DeviceCard({
 const DeviceSelectScreen: React.FC = () => {
   const navigation = useNavigation<DeviceSelectNav>();
   const route = useRoute<RouteProp<RootStackParamList, 'DeviceSelect'>>();
+  const dispatch = useAppDispatch();
 
   const { bookingId, devices = [], packages = [] } = route.params;
 
-  const [completedIds, setCompletedIds] = useState<string[]>([]);
+  const completedIds = useAppSelector(state =>
+    selectCompletedBookingItemIds(state, bookingId),
+  );
+  const hospitalMrn = useAppSelector(state => {
+    const bid = (bookingId ?? '').trim();
+    if (!bid) {
+      return undefined;
+    }
+    return state.booking.hospitalMrnByBookingId[bid];
+  });
   const [popupVisible, setPopupVisible] = useState(false);
+  const [popupTitle, setPopupTitle] = useState('Device Unavailable');
   const [popupMessage, setPopupMessage] = useState('');
   const [isPdfLoading, setIsPdfLoading] = useState(false);
 
-  // Collect all booking_item_ids across standalone devices and package tests
-  const allDevices: RawDeviceItem[] = [
-    ...devices,
-    ...packages.flatMap((p: RawPackageItem) => p.included_tests ?? []),
-  ];
+  const allDevices: RawDeviceItem[] = useMemo(
+    () => [
+      ...devices,
+      ...packages.flatMap((p: RawPackageItem) => p.included_tests ?? []),
+    ],
+    [devices, packages],
+  );
   const totalCount = allDevices.length;
-  const allDone = totalCount > 0 && completedIds.length >= totalCount;
+  const allDone =
+    totalCount > 0 &&
+    allDevices.every(device => completedIds.includes(device.booking_item_id));
 
-  // Keep a stable ref to completedIds for use inside useFocusEffect without stale closure
-  const completedIdsRef = useRef(completedIds);
-  useEffect(() => { completedIdsRef.current = completedIds; }, [completedIds]);
+  const hasGenvcareScan = useMemo(
+    () => bookingDevicesIncludeGenvcareScan(allDevices),
+    [allDevices],
+  );
+
+  useEffect(() => {
+    if (bookingId && hasGenvcareScan) {
+      void dispatch(fetchBookingHospitalMrn(bookingId));
+    }
+  }, [bookingId, dispatch, hasGenvcareScan]);
+
+  const fetchHospitalMrnIfNeeded = useCallback(() => {
+    if (bookingId && hasGenvcareScan) {
+      void dispatch(fetchBookingHospitalMrn(bookingId));
+    }
+  }, [bookingId, dispatch, hasGenvcareScan]);
 
   const navigateToTestActivity = useCallback(() => {
     navigation.replace('TestActivity', { initialTab: 'upcoming' });
   }, [navigation]);
 
+  const syncCompletionState = useCallback(() => {
+    const pending = consumePendingCompletedBookingItemId();
+    if (pending && bookingId) {
+      dispatch(markDeviceCompleted({ bookingId, bookingItemId: pending }));
+    }
+    if (bookingId && allDevices.length > 0) {
+      void dispatch(hydrateDeviceSelectFromPayload({ bookingId, devices: allDevices }));
+    }
+  }, [allDevices, bookingId, dispatch]);
+
   useFocusEffect(
     useCallback(() => {
-      // Consume any pending completed booking_item_id left by an IOT screen via goBack().
-      // This runs every time DeviceSelect comes into focus (including after a goBack()).
-      const pending = consumePendingCompletedBookingItemId();
-      if (pending && !completedIdsRef.current.includes(pending)) {
-        setCompletedIds(prev => [...prev, pending]);
-      }
+      syncCompletionState();
+      fetchHospitalMrnIfNeeded();
 
       let isNavigating = false;
       const handleBack = () => {
@@ -134,27 +192,59 @@ const DeviceSelectScreen: React.FC = () => {
         sub = BackHandler.addEventListener('hardwareBackPress', handleBack);
       }
       return () => sub?.remove();
-    }, [navigateToTestActivity]),
+    }, [navigateToTestActivity, syncCompletionState, fetchHospitalMrnIfNeeded]),
   );
 
   const handlePerform = useCallback(
     (device: RawDeviceItem) => {
-      if (
-        applyLabIotPerformTestNavigation(
+      void (async () => {
+        const genvcareResult = await runGenvcarePerformTestIfApplicable(
           navigation.navigate,
-          device.device_id,
-          device.device_name,
-          device.booking_item_id,
-          bookingId,
-          true, // isMultiDevice — IOT screen will skip Generate PDF and navigate back here
-        )
-      ) {
-        return;
-      }
-      setPopupMessage(`No device available for ${device.device_name}`);
-      setPopupVisible(true);
+          {
+            bookingId,
+            deviceId: device.device_id,
+            deviceName: device.device_name,
+            logContext: 'DeviceSelect Perform Test',
+            onSuccess: () => {
+              if (bookingId && device.booking_item_id) {
+                dispatch(
+                  markDeviceCompleted({
+                    bookingId,
+                    bookingItemId: device.booking_item_id,
+                  }),
+                );
+              }
+            },
+          },
+        );
+        if (genvcareResult.status === 'success') {
+          return;
+        }
+        if (genvcareResult.status === 'vendor_server_error') {
+          setPopupTitle(genvcareResult.title);
+          setPopupMessage(genvcareResult.message);
+          setPopupVisible(true);
+          return;
+        }
+
+        if (
+          applyLabIotPerformTestNavigation(
+            navigation.navigate,
+            device.device_id,
+            device.device_name,
+            device.booking_item_id,
+            bookingId,
+            true, // isMultiDevice — IOT screen will skip Generate PDF and navigate back here
+          )
+        ) {
+          return;
+        }
+        setPopupTitle('Device Unavailable');
+        setPopupMessage(`No device available for ${device.device_name}`);
+        setPopupVisible(true);
+      })();
     },
-    [navigation.navigate, bookingId],
+    [bookingId, dispatch, navigation.navigate],
   );
 
   const handleGeneratePdf = useCallback(async () => {
@@ -197,6 +287,7 @@ const DeviceSelectScreen: React.FC = () => {
                   device={device}
                   isDone={completedIds.includes(device.booking_item_id)}
                   onPerform={handlePerform}
+                  hospitalMrn={hospitalMrn}
                 />
               ))}
             </View>
@@ -211,6 +302,7 @@ const DeviceSelectScreen: React.FC = () => {
                   device={test}
                   isDone={completedIds.includes(test.booking_item_id)}
                   onPerform={handlePerform}
+                  hospitalMrn={hospitalMrn}
                 />
               ))}
             </View>
@@ -257,7 +349,7 @@ const DeviceSelectScreen: React.FC = () => {
         isVisible={popupVisible}
         onClose={() => setPopupVisible(false)}
         onConfirm={() => setPopupVisible(false)}
-        title="Device Unavailable"
+        title={popupTitle}
         message={popupMessage}
         showIcon={false}
       />
@@ -351,11 +443,19 @@ const styles = StyleSheet.create({
   deviceIconWrapDone: {
     backgroundColor: DONE_BG,
   },
-  deviceName: {
+  deviceTitleCol: {
     flex: 1,
+  },
+  deviceName: {
     fontSize: ms(16),
     fontWeight: '700',
     color: TEXT_DARK,
+  },
+  mrnText: {
+    marginTop: vs(4),
+    fontSize: ms(13),
+    fontWeight: '700',
+    color: PRIMARY,
   },
   doneBadge: {
     backgroundColor: DONE_BG,

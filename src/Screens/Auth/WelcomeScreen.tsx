@@ -11,6 +11,12 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import PrimaryButton from '../../Components/Button/PrimaryButton';
 import { COLORS } from '../../Constants/theme';
 import { RootStackParamList } from '../../navigation/types';
+import { getAuthToken, getUserID } from '../../Utils/storage';
+import {
+  getIdentityVerificationStatus,
+  hasSubmittedIdentityVerification,
+  isApprovedIdentityVerification,
+} from '../../Services/authService';
 import axiosInstance from '../../api/axiosInstance';
 
 type WelcomeNavProp = NativeStackNavigationProp<RootStackParamList, 'Welcome'>;
@@ -65,7 +71,30 @@ const WelcomeScreen: React.FC = () => {
     // navigation.navigate('TestActivity');
   };
 
-  const handleSignup = () => {
+  const handleSignup = async () => {
+    try {
+      const [token, userID] = await Promise.all([getAuthToken(), getUserID()]);
+      if (token && userID) {
+        try {
+          const verification = await getIdentityVerificationStatus();
+          const record = verification?.data;
+          if (isApprovedIdentityVerification(record)) {
+            navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+            return;
+          }
+          if (hasSubmittedIdentityVerification(record)) {
+            navigation.navigate('VerificationPending');
+            return;
+          }
+        } catch {
+          // Session exists from completed OTP — resume document upload.
+        }
+        navigation.navigate('IdentityVerification');
+        return;
+      }
+    } catch {
+      // Fall through to the registration form.
+    }
     navigation.navigate('Register');
   };
 

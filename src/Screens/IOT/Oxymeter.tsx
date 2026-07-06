@@ -1046,11 +1046,6 @@ const Oxymeter: React.FC = () => {
                 const fb = resolveNativeBleUserFeedback(error);
                 if (fb.status) setConnectionStatus(fb.status);
                 if (fb.logDetail) appendLog(`Stream: ${fb.logDetail}`);
-                if (fb.level === 'error') {
-                  console.error('Oximeter BLE monitor', error);
-                } else {
-                  console.warn('Oximeter BLE monitor', error);
-                }
                 return;
               }
               if (!c?.value) return;
@@ -1072,11 +1067,6 @@ const Oxymeter: React.FC = () => {
         const fb = resolveNativeBleUserFeedback(error);
         setConnectionStatus(fb.status);
         appendLog(fb.logDetail);
-        if (fb.level === 'error') {
-          console.error('Native BLE error', error);
-        } else {
-          console.warn('Native BLE error', error);
-        }
         await disconnectNativeBle();
       } finally {
         setIsConnecting(false);
@@ -1160,9 +1150,7 @@ const Oxymeter: React.FC = () => {
 
           try {
             await char.startNotifications();
-          } catch (e: unknown) {
-            const msg = e instanceof Error ? e.message : String(e);
-            console.warn('Notify failed:', msg);
+          } catch {
             continue;
           }
 
@@ -1178,7 +1166,6 @@ const Oxymeter: React.FC = () => {
         appendLog('Try inserting finger before connecting.');
       }
     } catch (error: unknown) {
-      console.error('Connection error', error);
       setConnectionStatus('❌ Connection failed.');
       const msg = error instanceof Error ? error.message : 'unknown error';
       appendLog(`Error: ${msg}`);
@@ -1300,9 +1287,7 @@ const Oxymeter: React.FC = () => {
         const pdfBody = { bookingId };
         const pdfRes = await axiosInstance.post('reports/payload/pdf', pdfBody);
       }
-    } catch (err) {
-      const e = err as { message?: string };
-      console.warn('[Oxymeter] PDF generation failed:', e?.message ?? err);
+    } catch {
     } finally {
       setIsPdfLoading(false);
     }

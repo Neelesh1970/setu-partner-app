@@ -99,9 +99,6 @@ const getAuthHeaders = async () => {
     getRegisteredPatientRefreshToken(),
   ]);
 
-  if (__DEV__) {
-    console.log('[PreventiveHealthAPI] getAuthHeaders — patient token present:', Boolean(accessToken));
-  }
   return {
     Authorization: `Bearer ${accessToken ?? ""}`,
     "x-refresh-token": refreshToken ?? "",
@@ -163,20 +160,7 @@ function normalizePatientRows(raw: unknown): PreventivePatientRow[] {
 export const getPatients = async (): Promise<PreventivePatientRow[]> => {
   const headers = await getAuthHeaders();
   const res = await api.get("/patients", { headers });
-  if (__DEV__) {
-    console.log(
-      "[PreventiveHealthAPI] getPatients raw:",
-      JSON.stringify(res.data, null, 2),
-    );
-  }
   const rows = normalizePatientRows(res.data?.data ?? res.data);
-  if (__DEV__) {
-    console.log(
-      "[PreventiveHealthAPI] getPatients — row count:",
-      rows.length,
-      rows[0] ? `first id=${String(rows[0].id ?? "—")} user_id=${String(rows[0].user_id ?? "—")}` : "",
-    );
-  }
   return rows;
 };
 
@@ -198,17 +182,8 @@ export const getPatientAddresses = async (): Promise<PreventivePatientRow[]> => 
   const headers = await getAuthHeaders();
   try {
     const res = await api.get("/addresses", { headers });
-    if (__DEV__) {
-      console.log(
-        "[PreventiveHealthAPI] getPatientAddresses raw:",
-        JSON.stringify(res.data, null, 2),
-      );
-    }
     return normalizeAddressRows(res.data?.data ?? res.data);
   } catch {
-    if (__DEV__) {
-      console.log("[PreventiveHealthAPI] getPatientAddresses — request failed");
-    }
     return [];
   }
 };
@@ -221,18 +196,9 @@ export const ensurePreventivePatientRecord = async (): Promise<PreventivePatient
   const headers = await getAuthHeaders();
   try {
     const res = await api.post("/patients", {}, { headers });
-    if (__DEV__) {
-      console.log(
-        "[PreventiveHealthAPI] POST /patients raw:",
-        JSON.stringify(res.data, null, 2),
-      );
-    }
     const rows = normalizePatientRows(res.data?.data ?? res.data?.patient ?? res.data);
     return rows[0] ?? null;
-  } catch (e) {
-    if (__DEV__) {
-      console.log("[PreventiveHealthAPI] POST /patients failed:", e);
-    }
+  } catch {
     return null;
   }
 };
@@ -242,27 +208,12 @@ export const getPatientAuthProfile = async (): Promise<PreventivePatientRow | nu
   const headers = await getAuthHeaders();
   try {
     const res = await api.get("/patient-auth/profile", { headers });
-    if (__DEV__) {
-      console.log(
-        "[PreventiveHealthAPI] getPatientAuthProfile raw:",
-        JSON.stringify(res.data, null, 2),
-      );
-    }
     const rows = normalizePatientRows(
       res.data?.data ?? res.data?.user ?? res.data?.patient ?? res.data,
     );
     const row = rows[0] ?? null;
-    if (__DEV__) {
-      console.log(
-        "[PreventiveHealthAPI] getPatientAuthProfile —",
-        row ? `id=${String(row.id ?? "—")} user_id=${String(row.user_id ?? "—")}` : "no row",
-      );
-    }
     return row;
   } catch {
-    if (__DEV__) {
-      console.log("[PreventiveHealthAPI] getPatientAuthProfile — request failed");
-    }
     return null;
   }
 };
@@ -327,6 +278,8 @@ export type LabPatientRecord = {
   devices?: RawDeviceItem[] | null;
   /** Structured packages (each with included_tests) from new API response. */
   packages?: RawPackageItem[] | null;
+  /** Hospital MRN from lab patients list (`GET /lab/patients`). */
+  hospital_mrn?: string | null;
 };
   
 const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -568,6 +521,7 @@ type RawApiPatient = {
   payment_status?: string | null;
   payment_method?: string | null;
   amount?: string | null;
+  hospital_mrn?: string | null;
   /** Standalone (non-package) devices assigned to this booking. */
   devices?: RawDeviceItem[];
   /** Package assignments, each with their included device tests. */
@@ -626,6 +580,7 @@ export const getLabPatients = async (
       payment_status: raw.payment_status,
       payment_method: raw.payment_method,
       amount: raw.amount ?? null,
+      hospital_mrn: raw.hospital_mrn ?? null,
       device_names: device_names.length > 0 ? device_names : null,
       device_ids: device_ids.length > 0 ? device_ids : null,
       booking_item_ids: booking_item_ids.length > 0 ? booking_item_ids : null,
@@ -652,6 +607,139 @@ export const collectCashPayment = async (
     {},
   );
   return res.data;
+};
+
+export type ReportPayloadParameter = {
+  parameterId?: string;
+  name?: string;
+  value?: string | null;
+  unit?: string | null;
+  referenceRange?: string | null;
+  status?: string | null;
+  isOutsideRange?: boolean;
+};
+
+export type ReportPayloadTest = {
+  testId?: string;
+  testName: string;
+  parameters?: ReportPayloadParameter[];
+};
+
+export type ReportPayloadData = {
+  testsDone?: string | null;
+  tests?: ReportPayloadTest[];
+  booking?: {
+    testStatus?: string | null;
+  } | null;
+};
+
+type ReportPayloadApiResponse = {
+  success?: boolean;
+  message?: string;
+  data?: ReportPayloadData;
+};
+
+/** GET reports/payload?bookingId=… — saved test results for a booking (lab worker session). */
+export const getReportPayload = async (
+  bookingId: string,
+): Promise<ReportPayloadData | null> => {
+  const bid = bookingId.trim();
+  if (!bid) {
+    return null;
+  }
+  const res = await axiosInstance.get<ReportPayloadApiResponse>('reports/payload', {
+    params: { bookingId: bid },
+  });
+  return res.data?.data ?? null;
+};
+
+export type LabBookingDetailData = {
+  hospital_mrn?: string | null;
+  id?: string;
+  [key: string]: unknown;
+};
+
+type LabBookingDetailApiResponse = {
+  success?: boolean;
+  message?: string;
+  data?: {
+    booking?: LabBookingDetailData | null;
+    hospital_mrn?: string | null;
+    [key: string]: unknown;
+  };
+};
+
+export function extractHospitalMrnFromBookingResponse(
+  data: LabBookingDetailApiResponse['data'] | null | undefined,
+): string | null {
+  return extractHospitalMrnFromBookingDetail(data);
+}
+
+/** Walk common API shapes for `hospital_mrn`. */
+export function extractHospitalMrnFromBookingDetail(
+  payload: unknown,
+): string | null {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+  const d = payload as Record<string, unknown>;
+
+  const direct = d.hospital_mrn;
+  if (typeof direct === 'string' && direct.trim()) {
+    return direct.trim();
+  }
+
+  const booking = d.booking;
+  if (booking && typeof booking === 'object') {
+    const nested = (booking as Record<string, unknown>).hospital_mrn;
+    if (typeof nested === 'string' && nested.trim()) {
+      return nested.trim();
+    }
+  }
+
+  return null;
+}
+
+function extractHospitalMrnFromAxiosBody(body: unknown): string | null {
+  if (!body || typeof body !== 'object') {
+    return null;
+  }
+  const root = body as Record<string, unknown>;
+  return (
+    extractHospitalMrnFromBookingDetail(root.data) ??
+    extractHospitalMrnFromBookingDetail(root) ??
+    null
+  );
+}
+
+/** GET booking detail — lab worker session (hospital MRN for Genvcare scans). */
+export const getLabBookingById = async (
+  bookingId: string,
+): Promise<string | null> => {
+  const bid = bookingId.trim();
+  if (!bid) {
+    return null;
+  }
+
+  // Patient/lab booking detail with hospital_mrn lives on `bookings/:id` (see API contract).
+  const paths = [
+    `bookings/${encodeURIComponent(bid)}`,
+    `lab/bookings/${encodeURIComponent(bid)}`,
+  ];
+
+  for (const path of paths) {
+    try {
+      const res = await axiosInstance.get<LabBookingDetailApiResponse>(path);
+      const mrn = extractHospitalMrnFromAxiosBody(res.data);
+      if (mrn) {
+        return mrn;
+      }
+    } catch {
+      /* try next path */
+    }
+  }
+
+  return null;
 };
 
 export const addToCart = async (deviceId: string | number) => {

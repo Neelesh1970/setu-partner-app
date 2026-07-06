@@ -3,6 +3,24 @@ import { getLabUserId, getUserID } from '../Utils/storage';
 import type { IdProofTypeApi, PickedFile } from './identityVerificationTypes';
 export type { IdProofTypeApi, PickedFile } from './identityVerificationTypes';
 
+async function postLabWorkerRegister<T>(
+  _step: string,
+  path: string,
+  payload?: unknown,
+): Promise<T> {
+  const { data } = await axiosInstance.post<T>(path, payload);
+  return data;
+}
+
+async function postRegisterBaseUrl<T>(
+  _step: string,
+  path: string,
+  payload?: unknown,
+): Promise<T> {
+  const { data } = await registerAxiosInstance.post<T>(path, payload);
+  return data;
+}
+
 export interface RegisterPayload {
   mobile: string;
   role: string;
@@ -96,8 +114,7 @@ export const sendRegistrationOtp = async (
 ): Promise<SendOtpResponse> => {
   // NOTE: registration OTP for partner app must use main API base (/api/v1).
   // `BASE_URL` already includes `/api/v1`, so keep the path API-relative here.
-  const { data } = await axiosInstance.post<SendOtpResponse>('/auth/register/send-otp', payload);
-  return data;
+  return postLabWorkerRegister<SendOtpResponse>('send-otp', '/auth/register/send-otp', payload);
 };
 
 export const getCenters = async (): Promise<Center[]> => {
@@ -120,21 +137,19 @@ export const verifySmartpingOtp = async (payload: {
 export const verifyRegistrationOtp = async (
   payload: VerifyOtpPayload,
 ): Promise<VerifyOtpResponse> => {
-  const { data } = await axiosInstance.post<VerifyOtpResponse>(
+  return postLabWorkerRegister<VerifyOtpResponse>(
+    'verify-otp',
     '/auth/register/verify-otp',
     payload,
   );
-  return data;
 };
 
 export const resendRegistrationOtp = async (
   mobile: string,
 ): Promise<SendOtpResponse> => {
-  const { data } = await axiosInstance.post<SendOtpResponse>(
-    '/auth/register/resend-otp',
-    { mobile },
-  );
-  return data;
+  return postLabWorkerRegister<SendOtpResponse>('resend-otp', '/auth/register/resend-otp', {
+    mobile,
+  });
 };
 
 /** POST /patients/send-otp — new patient registration (Health Soldier flow). */
@@ -186,11 +201,10 @@ export const verifyPatientOtp = async (
 };
 
 export const sendNewUserOtp = async (mobile: string): Promise<any> => {
-  const { data } = await registerAxiosInstance.post('/register/send-otp', {
+  return postRegisterBaseUrl('register-base send-otp', '/register/send-otp', {
     mobile,
     receiveUpdates: true,
   });
-  return data;
 };
 
 export const sendExistingUserOtpRegFlow = async (mobile: string): Promise<any> => {
@@ -202,13 +216,11 @@ export const verifyRegistrationOtpRegFlow = async (payload: {
   mobile: string;
   otp: string;
 }): Promise<any> => {
-  const { data } = await registerAxiosInstance.post('/register/verify-otp', payload);
-  return data;
+  return postRegisterBaseUrl('register-base verify-otp', '/register/verify-otp', payload);
 };
 
 export const resendNewUserOtpRegFlow = async (mobile: string): Promise<any> => {
-  const { data } = await registerAxiosInstance.post('/register/resend-otp', { mobile });
-  return data;
+  return postRegisterBaseUrl('register-base resend-otp', '/register/resend-otp', { mobile });
 };
 
 export const resendExistingUserOtpRegFlow = async (mobile: string): Promise<any> => {
