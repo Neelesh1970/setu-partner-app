@@ -7,4 +7,5 @@ import Config from 'react-native-config';
 export const BASE_URL = Config.BASE_URL!;
 export const REGISTER_BASE_URL = Config.REGISTER_BASE_URL!;
 export const PREVENTIVE_BASE_URL = Config.PREVENTIVE_BASE_URL!;
+// export const PREVENTIVE_BASE_URL = "https://photo-craft-murphy-build.trycloudflare.com";
 export const RAZORPAY_TEST_KEY_ID = Config.RAZORPAY_TEST_KEY_ID!;
