@@ -20,6 +20,12 @@ import TestHomeScreen from '../Screens/Test/TestHomeScreen';
 import RegisterOtp from '../Screens/Authentication/RegisterOtp';
 import UserDetailsScreen from '../Screens/Authentication/UserDetailsScreen';
 import PremiumPrice from '../Screens/Authentication/PremiumPrice';
+import RegisterLoginScreen from '../Screens/PreventiveHealth/NewAuth/Register_LoginScreen';
+import PreventiveAuthLogin from '../Screens/PreventiveHealth/NewAuth/Login/Login';
+import LoginOTP from '../Screens/PreventiveHealth/NewAuth/Login/LoginOTP';
+import PreventiveAuthSignUp from '../Screens/PreventiveHealth/NewAuth/SignUp/SignUP';
+import PreventiveAuthSignUpOTP from '../Screens/PreventiveHealth/NewAuth/SignUp/SignUpOTP';
+import TrialScreen from '../Screens/PreventiveHealth/NewAuth/SignUp/TrialScreen';
 import SignUP from '../Screens/PreventiveHealth/Auth/SignUP';
 import SignUpOTP from '../Screens/PreventiveHealth/Auth/SignUpOTP';
 import {
@@ -144,6 +150,13 @@ const AppNavigator: React.FC = () => {
         <Stack.Screen name="RegisterOtp" component={RegisterOtp} />
         <Stack.Screen name="UserDetails" component={UserDetailsScreen} />
         <Stack.Screen name="PremiumPrice" component={PremiumPrice} />
+        <Stack.Screen name="RegisterLoginScreen" component={RegisterLoginScreen} />
+        <Stack.Screen name="PreventiveAuthLogin" component={PreventiveAuthLogin} />
+        <Stack.Screen name="LoginOTP" component={LoginOTP} />
+        <Stack.Screen name="PreventiveAuthSignUp" component={PreventiveAuthSignUp} />
+        <Stack.Screen name="PreventiveAuthSignUpOTP" component={PreventiveAuthSignUpOTP} />
+        <Stack.Screen name="TrialScreen" component={TrialScreen} />
+        <Stack.Screen name="BenefitScreen" component={PreventiveHealth} />
         <Stack.Screen name="SignUp" component={SignUP} />
         <Stack.Screen name="SignUpOTP" component={SignUpOTP} />
         <Stack.Screen name="Dashboard" component={DashboardScreen} />

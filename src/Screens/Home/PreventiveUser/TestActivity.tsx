@@ -181,7 +181,7 @@ function UpcomingStyleTestCard({
       <View style={styles.cardTopRow}>
         <Text style={styles.cardNameRow} numberOfLines={2}>
           <Text style={styles.patientName}>{patientName}</Text>
-          <Text style={styles.patientId}> ({patientId})</Text>
+          {/* <Text style={styles.patientId}> ({patientId})</Text> */}
         </Text>
         <TouchableOpacity onPress={onSeeDetails} hitSlop={8}>
           <Text style={styles.seeDetailsUpcoming}>See details</Text>
