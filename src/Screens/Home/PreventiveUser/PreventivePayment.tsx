@@ -232,6 +232,7 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
 
       // ── Step 3: verify on backend ──────────────────────────────
       const verifyRes = await verifyRazorpay(bookingId, payload);
+      console.log("[PreventiveFlow] PreventivePayment UPI verify response", verifyRes);
 
       if (verifyRes?.success !== true) {
         Alert.alert("Payment", verifyRes?.message ?? "Payment verification failed.");
@@ -240,6 +241,7 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
 
       navigation.replace("PreventiveBookingSummary", { bookingId });
     } catch (e: unknown) {
+      console.log("[PreventiveFlow] PreventivePayment UPI failed", e);
       if (isRazorpayUserCancelled(e)) {
         Alert.alert("Payment", "Payment cancelled.");
         return;
@@ -265,6 +267,7 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
     setPaying(true);
     try {
       const res = await payCash(bookingId);
+      console.log("[PreventiveFlow] PreventivePayment cash response", res);
 
       if (res?.success !== true) {
         Alert.alert("Payment", res?.message ?? "Cash payment could not be recorded.");
@@ -272,6 +275,7 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
       }
       setCashConfirmed(true);
     } catch (e: unknown) {
+      console.log("[PreventiveFlow] PreventivePayment cash failed", e);
       const axiosErr = e as {
         message?: string;
       };
@@ -295,7 +299,9 @@ export default function PreventivePayment({ navigation, route }: Props): React.J
         Alert.alert("Payment", "Missing booking.");
         return;
       }
+      console.log("[PreventiveFlow] PreventivePayment cash confirmed → summary", { bookingId });
       navigation.replace("PreventiveBookingSummary", { bookingId });
+      console.log("[PreventiveFlow] PreventivePayment cash confirmed → summary", { bookingId });
     } else {
       // First tap — register cash with API
       await handleCashPayment();

@@ -39,7 +39,7 @@ export type AshaStethoscopeAnalysis = {
 };
 
 export function bytesToBase64(bytes: Uint8Array): string {
-  return globalBuffer.Buffer.from(bytes).toString('base64');
+  return Buffer.from(bytes).toString('base64');
 }
 
 export function payloadIncludesWav(payload: string): boolean {

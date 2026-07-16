@@ -12,7 +12,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS, FONT_SIZE, SPACING } from '../../Constants/theme';
 import {
@@ -541,6 +541,10 @@ const HomeScreen: React.FC = () => {
           getLabPatients('upcoming'),
           getLabPatients('completed'),
         ]);
+        console.log('[PreventiveFlow] HomeScreen lab patients', {
+          upcomingCount: upcoming.length,
+          completedCount: completed.length,
+        });
         const now = new Date();
         const todayYmd = formatLocalYmd(now);
         setHomeUpcomingRaw(upcoming);
@@ -684,6 +688,13 @@ const HomeScreen: React.FC = () => {
   useEffect(() => {
     loadHomePatientPreviews();
   }, [loadHomePatientPreviews]);
+
+  useFocusEffect(
+    useCallback(() => {
+      console.log('[PreventiveFlow] HomeScreen focus — refresh lab patient previews');
+      void loadHomePatientPreviews({ skipSectionLoading: true });
+    }, [loadHomePatientPreviews]),
+  );
 
   useEffect(() => {
     void (async () => {

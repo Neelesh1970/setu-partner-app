@@ -99,7 +99,9 @@ export default function PreventiveCheckout({ navigation }: any) {
     }
     setLoading(true);
     try {
+      console.log("[PreventiveFlow] PreventiveCheckout GET /bookings/checkout request", { bookingId });
       const res = await getBookingCheckout(bookingId);
+      console.log("[PreventiveFlow] PreventiveCheckout GET /bookings/checkout response", res);
       const bd = res?.data?.bill_details;
       if (!bd) {
         Alert.alert(
@@ -118,6 +120,7 @@ export default function PreventiveCheckout({ navigation }: any) {
         amountPayable: Number(bd.amount_payable ?? 0),
       });
     } catch (e: unknown) {
+      console.log("[PreventiveFlow] PreventiveCheckout GET /bookings/checkout failed", e);
       const msg =
         e && typeof e === "object" && "message" in e
           ? String((e as Error).message)
@@ -140,6 +143,10 @@ export default function PreventiveCheckout({ navigation }: any) {
     }
     setSubmitting(true);
     try {
+      console.log("[PreventiveFlow] PreventiveCheckout Continue to payment", {
+        bookingId,
+        amountPayable: bill.amountPayable,
+      });
       navigation.navigate("PreventivePayment", {
         bookingId,
         amountPayable: bill.amountPayable,

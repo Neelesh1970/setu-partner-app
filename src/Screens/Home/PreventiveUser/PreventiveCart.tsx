@@ -20,7 +20,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import PreventiveHealthHeader from "./PreventiveHealthHeader";
 // import CustomPopup from "../Components/CustomPopup";
 
-import { getCart, removeFromCart } from "./PreventiveHealthAPI";
+import { getCart, removeFromCart, getPreventivePatients } from "./PreventiveHealthAPI";
 import { getPreventiveCartStore } from "../../../Utils/preventiveCartStore";
 
 const COLORS = {
@@ -45,6 +45,7 @@ export default function PreventiveCart({ navigation }: any) {
     const [showRemovePopup, setShowRemovePopup] = useState(false);
     const [selectedItem, setSelectedItem] = useState<any>(null);
     const [removeLoading, setRemoveLoading] = useState(false);
+    const [continueLoading, setContinueLoading] = useState(false);
     /** Ignore AsyncStorage-driven store updates until GET /cart finishes — otherwise hydrate replays stale items during/after a failed fetch. */
     const ignoreStoreSubscriptionRef = useRef(true);
 
@@ -92,6 +93,29 @@ export default function PreventiveCart({ navigation }: any) {
             setCartLoading(false);
         }
     }, [store]);
+
+    const handleContinue = useCallback(async () => {
+        if (continueLoading) return;
+
+        setContinueLoading(true);
+        try {
+            const list = await getPreventivePatients();
+            console.log("[PreventiveFlow] PreventiveCart Continue GET /patients", {
+                count: Array.isArray(list) ? list.length : 0,
+                patients: list,
+            });
+            if (Array.isArray(list) && list.length > 0) {
+                navigation.navigate("SelectPatient");
+            } else {
+                navigation.navigate("PatientDetail", { fromScreen: "PreventiveCart" });
+            }
+        } catch (e) {
+            console.log("[PreventiveFlow] PreventiveCart Continue GET /patients failed", e);
+            navigation.navigate("PatientDetail", { fromScreen: "PreventiveCart" });
+        } finally {
+            setContinueLoading(false);
+        }
+    }, [continueLoading, navigation]);
 
     useEffect(() => {
         let isNavigating = false;
@@ -336,9 +360,14 @@ export default function PreventiveCart({ navigation }: any) {
 
                         <TouchableOpacity
                             style={styles.continueBtn}
-                            onPress={() => navigation.navigate("PreventiveBookingDetail")}
+                            onPress={() => void handleContinue()}
+                            disabled={continueLoading}
                         >
-                            <Text style={styles.continueText}>Continue</Text>
+                            {continueLoading ? (
+                                <ActivityIndicator color="#FFFFFF" />
+                            ) : (
+                                <Text style={styles.continueText}>Continue</Text>
+                            )}
                         </TouchableOpacity>
                     </View>
                 </View>

@@ -51,7 +51,28 @@ export type RootStackParamList = {
   Screening: undefined;
   HealthPackageOverview: { packageId: string };
   PreventiveCart: undefined;
-  PreventiveBookingDetail: undefined;
+  SelectPatient:
+    | {
+        fromScreen?: string;
+        screening?: Record<string, unknown>;
+      }
+    | undefined;
+  PatientDetail: {
+    fromScreen?: 'PreventiveCart' | 'SelectPatient' | 'Screening' | string;
+    screening?: Record<string, unknown>;
+  };
+  SelectLocation:
+    | {
+        fromScreen?: string;
+        screening?: Record<string, unknown>;
+      }
+    | undefined;
+  PreventiveBookingDetail:
+    | {
+        fromScreen?: string;
+        screening?: Record<string, unknown>;
+      }
+    | undefined;
   PreventiveCheckout: { bookingId?: string } | undefined;
   PreventivePayment: { bookingId: string; amountPayable?: number } | undefined;
   PreventiveBookingSummary: { bookingId: string } | undefined;

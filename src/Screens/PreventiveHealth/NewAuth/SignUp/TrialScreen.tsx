@@ -335,7 +335,6 @@ const TrialScreen: React.FC = () => {
         iconName={popupConfig.iconName}
         iconColor={popupConfig.iconColor}
         confirmText="OK"
-        cancelText={null}
         style={popupStyles.popupContainer}
         confirmStyle={popupStyles.popupConfirmButton}
       />

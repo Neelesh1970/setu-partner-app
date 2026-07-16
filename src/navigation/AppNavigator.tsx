@@ -28,6 +28,7 @@ import PreventiveAuthSignUpOTP from '../Screens/PreventiveHealth/NewAuth/SignUp/
 import TrialScreen from '../Screens/PreventiveHealth/NewAuth/SignUp/TrialScreen';
 import SignUP from '../Screens/PreventiveHealth/Auth/SignUP';
 import SignUpOTP from '../Screens/PreventiveHealth/Auth/SignUpOTP';
+
 import {
   LazyBloodPressure,
   LazyAshaDevice,
@@ -47,6 +48,9 @@ import HealthPackage from '../Screens/Home/PreventiveUser/HealthPackage';
 import Screening from '../Screens/Home/PreventiveUser/Screening';
 import HealthPackageOverview from '../Screens/Home/PreventiveUser/HealthPackageOverview';
 import PreventiveCart from '../Screens/Home/PreventiveUser/PreventiveCart';
+import SelectPatient from '../Screens/Home/PreventiveUser/SelectPatient';
+import PatientDetail from '../Screens/Home/PreventiveUser/PatientDetail';
+import SelectLocation from '../Screens/Home/PreventiveUser/SelectLocation';
 import PreventiveBookingDetail from '../Screens/Home/PreventiveUser/PreventiveBookingDetail';
 import PreventiveCheckout from '../Screens/Home/PreventiveUser/PreventiveCheckout';
 import PreventiveBookingSummary from '../Screens/Home/PreventiveUser/PreventiveBookingSummary';
@@ -168,6 +172,9 @@ const AppNavigator: React.FC = () => {
         <Stack.Screen name="Screening" component={Screening} />
         <Stack.Screen name="HealthPackageOverview" component={HealthPackageOverview} />
         <Stack.Screen name="PreventiveCart" component={PreventiveCart} />
+        <Stack.Screen name="SelectPatient" component={SelectPatient} />
+        <Stack.Screen name="PatientDetail" component={PatientDetail} />
+        <Stack.Screen name="SelectLocation" component={SelectLocation} />
         <Stack.Screen name="PreventiveBookingDetail" component={PreventiveBookingDetail} />
         <Stack.Screen name="PreventiveCheckout" component={PreventiveCheckout} />
         <Stack.Screen name="PreventivePayment" component={LazyPreventivePayment} />
