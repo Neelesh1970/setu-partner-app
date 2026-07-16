@@ -39,11 +39,28 @@ type PopupConfig = {
 };
 
 type ApiErrorShape = {
-  response?: { data?: { message?: string } };
+  response?: { data?: unknown };
+  responseData?: unknown;
   message?: string;
 };
 
 const onlyDigits = (value: string) => value.replace(/\D/g, '').slice(0, 10);
+
+const isMobileAlreadyVerifiedMessage = (message?: string | null): boolean => {
+  const normalized = String(message ?? '').trim().toLowerCase();
+  return (
+    normalized === 'mobile number is already verified' ||
+    normalized.includes('already verified')
+  );
+};
+
+const extractApiMessage = (payload: unknown): string | undefined => {
+  if (payload == null || typeof payload !== 'object') {
+    return undefined;
+  }
+  const record = payload as { message?: string; data?: { message?: string } };
+  return record.message ?? record.data?.message;
+};
 
 const PreventiveAuthSignUp: React.FC = () => {
   const navigation = useNavigation<Nav>();
@@ -93,6 +110,13 @@ const PreventiveAuthSignUp: React.FC = () => {
     setPopupVisible(true);
   }, []);
 
+  const goToTrialScreen = useCallback(() => {
+    console.log(
+      '[PreventiveAuthSignUp] Mobile already verified — skipping OTP, navigating to TrialScreen',
+    );
+    navigation.navigate('TrialScreen', { mobile: phoneDigits });
+  }, [navigation, phoneDigits]);
+
   const handleContinue = useCallback(async () => {
     if (phoneDigits.length !== 10) {
       setShowError(true);
@@ -125,8 +149,8 @@ const PreventiveAuthSignUp: React.FC = () => {
           mobile: phoneDigits,
           registrationData: { mobile: phoneDigits },
         });
-      } else if (data?.message === 'Mobile number is already verified') {
-        navigation.navigate('TrialScreen', { mobile: phoneDigits });
+      } else if (isMobileAlreadyVerifiedMessage(data?.message)) {
+        goToTrialScreen();
       } else {
         showPopup({
           title: 'Registration Failed',
@@ -138,22 +162,23 @@ const PreventiveAuthSignUp: React.FC = () => {
       }
     } catch (error) {
       const apiError = error as ApiErrorShape;
-      const errorData = apiError?.response?.data;
+      const errorData = apiError?.response?.data ?? apiError?.responseData;
+      const errorMessage = extractApiMessage(errorData) ?? apiError?.message;
 
       console.log('======================================');
       console.log('[PreventiveAuthSignUp] SEND OTP ERROR');
       console.log('Error response:', JSON.stringify(errorData, null, 2));
       console.log('======================================');
 
-      if (errorData?.message === 'Mobile number is already verified') {
-        navigation.navigate('TrialScreen', { mobile: phoneDigits });
+      if (isMobileAlreadyVerifiedMessage(errorMessage)) {
+        goToTrialScreen();
         return;
       }
 
       showPopup({
         title: 'Registration Failed',
         message:
-          errorData?.message || 'Something went wrong. Please try again.',
+          errorMessage || 'Something went wrong. Please try again.',
         iconName: 'alert-circle',
         iconColor: '#E53935',
         onConfirm: closePopup,
@@ -161,7 +186,7 @@ const PreventiveAuthSignUp: React.FC = () => {
     } finally {
       setIsSubmitting(false);
     }
-  }, [phoneDigits, isSubmitting, navigation, showPopup, closePopup]);
+  }, [phoneDigits, isSubmitting, navigation, showPopup, closePopup, goToTrialScreen]);
 
   return (
     <View style={styles.root}>
@@ -251,7 +276,6 @@ const PreventiveAuthSignUp: React.FC = () => {
         iconName={popupConfig.iconName}
         iconColor={popupConfig.iconColor}
         confirmText="OK"
-        cancelText={null}
         style={popupStyles.popupContainer}
         confirmStyle={popupStyles.popupConfirmButton}
       />

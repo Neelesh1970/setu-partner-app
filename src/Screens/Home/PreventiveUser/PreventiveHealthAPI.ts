@@ -157,11 +157,91 @@ function normalizePatientRows(raw: unknown): PreventivePatientRow[] {
   return [];
 }
 
+export type PreventivePatientListItem = {
+  id: string;
+  full_name?: string;
+  gender?: string;
+  age?: number;
+  phone?: string;
+  email?: string | null;
+  uhid?: string;
+  is_self?: boolean;
+};
+
+function normalizePreventivePatientList(raw: unknown): PreventivePatientListItem[] {
+  const rows = normalizePatientRows(raw);
+  const list: PreventivePatientListItem[] = [];
+
+  for (const row of rows) {
+    const id = row.id ?? row.patient_id;
+    if (id == null) continue;
+    list.push({
+      id: String(id),
+      full_name: row.full_name as string | undefined,
+      gender: row.gender as string | undefined,
+      age: typeof row.age === 'number' ? row.age : undefined,
+      phone: (row.phone ?? row.phone_number ?? row.mobile) as string | undefined,
+      email: row.email as string | null | undefined,
+      uhid: row.uhid as string | undefined,
+      is_self: row.is_self as boolean | undefined,
+    });
+  }
+
+  return list;
+}
+
 export const getPatients = async (): Promise<PreventivePatientRow[]> => {
   const headers = await getAuthHeaders();
   const res = await api.get("/patients", { headers });
   const rows = normalizePatientRows(res.data?.data ?? res.data);
   return rows;
+};
+
+export const getPreventivePatients = async (): Promise<PreventivePatientListItem[]> => {
+  const headers = await getAuthHeaders();
+  const res = await api.get("/patients", { headers });
+  return normalizePreventivePatientList(res.data?.data ?? res.data);
+};
+
+export type CreatePreventivePatientParams = {
+  accessToken?: string | null;
+  refreshToken?: string | null;
+  full_name: string;
+  phone: string;
+  gender: string;
+  age: number;
+  email?: string;
+};
+
+export const createPreventivePatient = async (params: CreatePreventivePatientParams) => {
+  const headers =
+    params.accessToken && params.refreshToken
+      ? {
+          Authorization: `Bearer ${params.accessToken}`,
+          "x-refresh-token": params.refreshToken,
+          "Content-Type": "application/json",
+        }
+      : {
+          ...(await getAuthHeaders()),
+          "Content-Type": "application/json",
+        };
+
+  const body: Record<string, unknown> = {
+    full_name: params.full_name,
+    phone: params.phone,
+    gender: params.gender,
+    age: params.age,
+  };
+  if (params.email) {
+    body.email = params.email;
+  }
+
+  return api.post("/patients", body, { headers });
+};
+
+export const deletePreventivePatient = async (patientId: string): Promise<void> => {
+  const headers = await getAuthHeaders();
+  await api.delete(`/patients/${patientId}`, { headers });
 };
 
 function normalizeAddressRows(raw: unknown): PreventivePatientRow[] {

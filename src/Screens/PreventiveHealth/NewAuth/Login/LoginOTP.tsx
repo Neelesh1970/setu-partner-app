@@ -30,7 +30,7 @@ import {
   storeItem,
 } from '../../../../Utils/storage';
 import type { RootStackParamList } from '../../../../navigation/types';
-
+import AsyncStorage from '@react-native-async-storage/async-storage';
 const BACKGROUND_IMAGE = require('../../../../assets/WelcomeBG.png');
 
 const REFERENCE_SCREEN_WIDTH = 393;
@@ -242,6 +242,9 @@ const LoginOTP: React.FC = () => {
             refreshToken,
           );
           await storeItem('user_id', String(loginData.user_id));
+          if (mobile) {
+            await AsyncStorage.setItem('preventive_user_mobile_v1', mobile);
+          }
 
           console.log('[PreventiveAuthLogin] TOKENS SAVED');
           console.log('Stored user_id:', loginData.user_id);
@@ -481,7 +484,6 @@ const LoginOTP: React.FC = () => {
         iconName={popupConfig.iconName}
         iconColor={popupConfig.iconColor}
         confirmText="OK"
-        cancelText={null}
         compact={!!popupConfig.compact}
         style={popupStyles.popupContainer}
         confirmStyle={popupStyles.popupConfirmButton}

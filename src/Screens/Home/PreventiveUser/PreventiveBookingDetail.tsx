@@ -234,7 +234,8 @@ function buildDateStrip() {
   });
 }
 
-export default function PreventiveBookingDetail({ navigation }: any) {
+export default function PreventiveBookingDetail({ navigation, route }: any) {
+  const { fromScreen, screening } = route?.params || {};
   const [selectedDateId, setSelectedDateId] = useState<string | null>(null);
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -278,8 +279,13 @@ export default function PreventiveBookingDetail({ navigation }: any) {
 
   const loadCenterId = useCallback(async () => {
     const id = await getPrimaryCenterId();
-    setCenterId(id && String(id).trim() ? String(id).trim() : null);
-  }, []);
+    const normalized = id && String(id).trim() ? String(id).trim() : null;
+    console.log("[PreventiveFlow] PreventiveBookingDetail lab center", {
+      primaryCenterId: normalized,
+      fromScreen,
+    });
+    setCenterId(normalized);
+  }, [fromScreen]);
 
   const fetchSlotsForSelection = useCallback(
     async (centerOverride?: string | null) => {
@@ -291,9 +297,15 @@ export default function PreventiveBookingDetail({ navigation }: any) {
       }
       setSlotsLoading(true);
       try {
+        console.log("[PreventiveFlow] PreventiveBookingDetail GET /slots request", {
+          centerId: cid,
+          date: selectedDateId,
+        });
         const data = await getSlots({ centerId: cid, date: selectedDateId });
+        console.log("[PreventiveFlow] PreventiveBookingDetail GET /slots response", data);
         setRawSlotPayload(data);
       } catch (e) {
+        console.log("[PreventiveFlow] PreventiveBookingDetail GET /slots failed", e);
         setRawSlotPayload(null);
       } finally {
         setSlotsLoading(false);
@@ -376,9 +388,12 @@ export default function PreventiveBookingDetail({ navigation }: any) {
         payload.address_id = String(addressId);
       }
 
+      console.log("[PreventiveFlow] PreventiveBookingDetail POST /bookings request", payload);
+
       setSubmitting(true);
       try {
         const res = await createPreventiveBooking(payload);
+        console.log("[PreventiveFlow] PreventiveBookingDetail POST /bookings response", res);
 
         const bookingId =
           res?.data?.booking_id != null
@@ -399,16 +414,26 @@ export default function PreventiveBookingDetail({ navigation }: any) {
           String(selectedDateId),
           String(selectedSlotId),
         );
+        console.log("[PreventiveFlow] PreventiveBookingDetail booking created", {
+          bookingId,
+          centerId,
+          selectedDateId,
+          selectedSlotId,
+          fromScreen,
+          screening,
+        });
         navigation.navigate("PreventiveCheckout", { bookingId });
       } catch (e: unknown) {
+        console.log("[PreventiveFlow] PreventiveBookingDetail POST /bookings failed", e);
         Alert.alert("Booking", formatBookingApiError(e));
       } finally {
         setSubmitting(false);
       }
     } catch (e: unknown) {
+      console.log("[PreventiveFlow] PreventiveBookingDetail onContinue failed", e);
       Alert.alert("Booking", formatBookingApiError(e));
     }
-  }, [centerId, navigation, selectedDateId, selectedSlotId, slots]);
+  }, [centerId, navigation, selectedDateId, selectedSlotId, slots, fromScreen, screening]);
 
   const handleRefresh = useCallback(async () => {
     try {
@@ -424,6 +449,18 @@ export default function PreventiveBookingDetail({ navigation }: any) {
     }
   }, [fetchSlotsForSelection, reloadClientBookedSlots]);
 
+  const navigateBack = useCallback(() => {
+    if (fromScreen === "SelectPatient") {
+      navigation.navigate("SelectPatient", { fromScreen, screening });
+      return;
+    }
+    if (fromScreen === "PreventiveCart") {
+      navigation.navigate("SelectPatient");
+      return;
+    }
+    navigation.goBack();
+  }, [fromScreen, navigation, screening]);
+
   useFocusEffect(
     useCallback(() => {
       let isNavigating = false;
@@ -431,7 +468,7 @@ export default function PreventiveBookingDetail({ navigation }: any) {
       const handleBack = () => {
         if (isNavigating) return true;
         isNavigating = true;
-        navigation.goBack();
+        navigateBack();
         return true;
       };
 
@@ -443,7 +480,7 @@ export default function PreventiveBookingDetail({ navigation }: any) {
       return () => {
         backSub?.remove();
       };
-    }, [navigation])
+    }, [navigateBack])
   );
 
   const selectedSlotRow = useMemo(
@@ -467,7 +504,7 @@ export default function PreventiveBookingDetail({ navigation }: any) {
         <SafeAreaView edges={['top']} style={styles.headerSafe}>
           <PreventiveHealthHeader
             title="Booking details"
-            onBackPress={() => navigation.goBack()}
+            onBackPress={navigateBack}
           />
         </SafeAreaView>
       </View>

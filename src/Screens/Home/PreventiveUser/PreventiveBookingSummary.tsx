@@ -71,7 +71,9 @@ export default function PreventiveBookingSummary({ navigation, route }: Props): 
     async function fetchBooking(): Promise<void> {
       setLoading(true);
       try {
+        console.log("[PreventiveFlow] PreventiveBookingSummary GET booking request", { bookingId });
         const res  = await getBooking(bookingId as string);
+        console.log("[PreventiveFlow] PreventiveBookingSummary GET booking response", res);
         const data = res?.data;
         let b: Record<string, unknown> | null = null;
         let p: Record<string, unknown> | null = null;
@@ -101,6 +103,7 @@ export default function PreventiveBookingSummary({ navigation, route }: Props): 
         setBooking(b);
         setPayment(p);
       } catch (e) {
+        console.log("[PreventiveFlow] PreventiveBookingSummary GET booking failed", e);
       } finally {
         setLoading(false);
       }
@@ -216,9 +219,22 @@ export default function PreventiveBookingSummary({ navigation, route }: Props): 
           <TouchableOpacity
             activeOpacity={0.9}
             style={styles.cta}
-            onPress={() => navigation.navigate("TestActivity", {})}
+            onPress={() => {
+              console.log("[PreventiveFlow] PreventiveBookingSummary → Home lab panel", { bookingId });
+              navigation.navigate("Home");
+            }}
           >
-            <Text style={styles.ctaText}>View My Bookings</Text>
+            <Text style={styles.ctaText}>View on Home</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.9}
+            style={[styles.cta, styles.ctaSecondary]}
+            onPress={() => {
+              console.log("[PreventiveFlow] PreventiveBookingSummary → TestActivity", { bookingId });
+              navigation.navigate("TestActivity", { initialTab: "upcoming" });
+            }}
+          >
+            <Text style={styles.ctaText}>View All Bookings</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -345,6 +361,10 @@ const styles = StyleSheet.create({
     paddingVertical: vs(15),
     alignItems: "center",
     justifyContent: "center",
+    marginBottom: vs(10),
+  },
+  ctaSecondary: {
+    backgroundColor: "#1C39BB",
   },
 
   ctaText: {

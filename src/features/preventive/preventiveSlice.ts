@@ -1,8 +1,11 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 import {
+  deletePreventivePatient,
   getDevices,
   getPackages,
+  getPreventivePatients,
   getScreenings,
+  type PreventivePatientListItem,
 } from '../../Screens/Home/PreventiveUser/PreventiveHealthAPI';
 
 export type PreventiveState = {
@@ -12,6 +15,10 @@ export type PreventiveState = {
   devicesLoading: boolean;
   packagesLoading: boolean;
   screeningsLoading: boolean;
+  patients: {
+    list: PreventivePatientListItem[];
+    loading: boolean;
+  };
   error: string | null;
 };
 
@@ -22,6 +29,10 @@ const initialState: PreventiveState = {
   devicesLoading: false,
   packagesLoading: false,
   screeningsLoading: false,
+  patients: {
+    list: [],
+    loading: false,
+  },
   error: null,
 };
 
@@ -57,6 +68,31 @@ export const fetchPreventiveScreenings = createAsyncThunk(
     }
   },
 );
+
+export const fetchPatients = createAsyncThunk<
+  PreventivePatientListItem[],
+  { force?: boolean } | undefined,
+  { state: { preventive: PreventiveState } }
+>(
+  'preventive/fetchPatients',
+  async () => getPreventivePatients(),
+  {
+    condition: (arg, { getState }) => {
+      const force = arg?.force;
+      if (force) return true;
+      const { list, loading } = getState().preventive.patients;
+      return !(list.length > 0 || loading);
+    },
+  },
+);
+
+export const deletePatientAsync = createAsyncThunk<
+  PreventivePatientListItem[],
+  { patientId: string }
+>('preventive/deletePatient', async ({ patientId }) => {
+  await deletePreventivePatient(patientId);
+  return getPreventivePatients();
+});
 
 const preventiveSlice = createSlice({
   name: 'preventive',
@@ -100,6 +136,29 @@ const preventiveSlice = createSlice({
       })
       .addCase(fetchPreventiveScreenings.rejected, (state, action) => {
         state.screeningsLoading = false;
+        state.error = (action.payload as string) ?? null;
+      })
+      .addCase(fetchPatients.pending, state => {
+        state.patients.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchPatients.fulfilled, (state, action) => {
+        state.patients.loading = false;
+        state.patients.list = action.payload;
+      })
+      .addCase(fetchPatients.rejected, (state, action) => {
+        state.patients.loading = false;
+        state.error = (action.payload as string) ?? null;
+      })
+      .addCase(deletePatientAsync.pending, state => {
+        state.patients.loading = true;
+      })
+      .addCase(deletePatientAsync.fulfilled, (state, action) => {
+        state.patients.loading = false;
+        state.patients.list = action.payload;
+      })
+      .addCase(deletePatientAsync.rejected, (state, action) => {
+        state.patients.loading = false;
         state.error = (action.payload as string) ?? null;
       });
   },

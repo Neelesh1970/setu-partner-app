@@ -198,11 +198,12 @@ const Screening = ({ navigation, route }: any) => {
         {/* FOOTER */}
         <View style={styles.footer}>
           <TouchableOpacity
-            style={styles.bookBtn}
-            activeOpacity={0.9}
-            onPress={() => navigation.navigate("PatientDetail")}
+            style={[styles.bookBtn, styles.bookBtnDisabled]}
+            activeOpacity={1}
+            disabled={true}
+            // onPress={() => navigation.navigate("PatientDetail")}
           >
-            <Text style={styles.bookBtnText}>{detail.ctaText}</Text>
+            <Text style={[styles.bookBtnText, styles.bookBtnTextDisabled]}>{detail.ctaText}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -232,6 +233,14 @@ const styles = StyleSheet.create({
   body: {
     paddingHorizontal: HPAD,
     paddingTop: vs(18),
+  },
+  bookBtnDisabled: {
+    backgroundColor: "#CBD5E1", // Grey disabled color
+  },
+  
+  bookBtnTextDisabled: {
+    color: "#FFFFFF",
+    opacity: 0.8,
   },
   accentBar: {
     width: ms(4),
