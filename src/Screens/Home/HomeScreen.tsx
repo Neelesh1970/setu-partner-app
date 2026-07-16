@@ -789,7 +789,7 @@ const HomeScreen: React.FC = () => {
           existingUserIconUrl={existingUserIconUrl}
           existingUserIconLoading={existingUserIconLoading}
           onRegisterNewUser={() => {
-            navigation.navigate('SignUp');
+            navigation.navigate('RegisterLoginScreen');
           }}
           onUpcomingVisitsAndTests={() =>
             navigation.navigate('TestActivity', { initialTab: 'upcoming' })

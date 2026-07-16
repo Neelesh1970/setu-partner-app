@@ -17,6 +17,16 @@ export type RootStackParamList = {
   NewUserRegistration: undefined;
   NewuserRegister: undefined;
   TestHome: undefined;
+  RegisterLoginScreen: undefined;
+  PreventiveAuthLogin: undefined;
+  LoginOTP: { mobile: string };
+  PreventiveAuthSignUp: undefined;
+  PreventiveAuthSignUpOTP: {
+    mobile: string;
+    registrationData: { mobile: string };
+  };
+  TrialScreen: { mobile: string };
+  BenefitScreen: undefined;
   SignUp: undefined;
   SignUpOTP: {
     mobile: string;
