@@ -161,7 +161,9 @@ export type PreventivePatientListItem = {
   id: string;
   full_name?: string;
   gender?: string;
-  age?: number;
+  age?: number | string;
+  dob?: string | null;
+  setu_user_id?: string | number | null;
   phone?: string;
   email?: string | null;
   uhid?: string;
@@ -178,8 +180,13 @@ function normalizePreventivePatientList(raw: unknown): PreventivePatientListItem
     list.push({
       id: String(id),
       full_name: row.full_name as string | undefined,
-      gender: row.gender as string | undefined,
-      age: typeof row.age === 'number' ? row.age : undefined,
+      gender: typeof row.gender === 'string' ? row.gender : undefined,
+      age:
+        typeof row.age === 'number' || typeof row.age === 'string'
+          ? row.age
+          : undefined,
+      dob: row.dob as string | null | undefined,
+      setu_user_id: row.setu_user_id as string | number | null | undefined,
       phone: (row.phone ?? row.phone_number ?? row.mobile) as string | undefined,
       email: row.email as string | null | undefined,
       uhid: row.uhid as string | undefined,

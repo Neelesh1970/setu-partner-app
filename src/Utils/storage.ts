@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getUserIdFromJwt } from './jwt';
 
 const KEYS = {
   AUTH_TOKEN: 'auth_token',
@@ -415,6 +416,18 @@ export const getAllStoredSessionData = async (): Promise<StoredSessionSnapshot> 
 /** Where to log: full dual tokens on Preventive Health, or lab-worker copy only on lab home. */
 export type LogStoredSessionMode = 'preventiveHealth' | 'labWorkerHome';
 
+export const logAccessAndRefreshTokens = (
+  accessToken: string | null,
+  refreshToken: string | null,
+): void => {
+  if (!__DEV__) return;
+
+  const userId = accessToken ? getUserIdFromJwt(accessToken) : null;
+  console.log('accessToken:', accessToken ?? '— (not set)');
+  console.log('userID:', userId ?? '— (not set)');
+  console.log('refreshToken:', refreshToken ?? '— (not set)');
+};
+
 /** Logs AsyncStorage session with clear labels for register-user vs lab-worker JWT copies. */
 export const logStoredSessionToConsole = async (
   tag = '[StoredSession]',
@@ -430,6 +443,11 @@ export const logStoredSessionToConsole = async (
     console.log(`${tag} lab_worker_refresh_token:`, s.lab_worker_refresh_token ?? '— (not set)');
     return;
   }
+
+  logAccessAndRefreshTokens(
+    s.registered_patient_auth.auth_token,
+    s.registered_patient_auth.refresh_token,
+  );
 };
 
 export const saveUserID = async (userID: string): Promise<void> => {

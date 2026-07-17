@@ -206,6 +206,7 @@ const TestDetails: React.FC = () => {
         phone: '—',
         slotDateIst: '—',
         slotTimeIst: '—',
+        hasPackage: false,
         packageLine: '—',
         deviceLine: '—',
         testLines: [] as string[],
@@ -223,6 +224,7 @@ const TestDetails: React.FC = () => {
       phone: (p.phone ?? '').trim() || '—',
       slotDateIst: formatLabSlotYmdIst(p.slot_date),
       slotTimeIst: formatLabSlotTimeRangeIst(p.slot_date, p.slot_start_time, p.slot_end_time),
+      hasPackage: pkg.length > 0,
       packageLine: pkg.length ? pkg.join(', ') : '—',
       deviceLine: dev.length ? dev.join(', ') : '—',
       testLines,
@@ -326,9 +328,11 @@ const TestDetails: React.FC = () => {
                 Test Details
               </Text>
               <View style={[styles.card, styles.lastCard]}>
-                <DetailRow label="Package Name" value={display.packageLine} />
+                {display.hasPackage ? (
+                  <DetailRow label="Package Name" value={display.packageLine} />
+                ) : null}
                 <DetailRow label="Device(s)" value={display.deviceLine} />
-                <View style={styles.testBlock}>
+                {/* <View style={styles.testBlock}>
                   <Text style={styles.testLabel} numberOfLines={2}>
                     Test:
                   </Text>
@@ -349,7 +353,7 @@ const TestDetails: React.FC = () => {
                       ))
                     )}
                   </View>
-                </View>
+                </View> */}
               </View>
 
               {/* <Text style={styles.sectionTitle}>Payment Info</Text>
