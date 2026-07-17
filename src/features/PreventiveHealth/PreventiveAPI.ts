@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { PREVENTIVE_BASE_URL } from '../../api/apiConfig';
+import { PREVENTIVE_BASE_URL, REGISTER_BASE_URL } from '../../api/apiConfig';
 import { registerAxiosInstance } from '../../api/axiosInstance';
 
 const PREVENTIVE_API_BASE = `${PREVENTIVE_BASE_URL.replace(/\/$/, '')}/api/v1`;
@@ -127,6 +127,39 @@ export const registerPatientTrial = (payload: RegisterPatientTrialPayload) =>
     '/register/autopay-5/confirm-trial-no-payment',
     payload,
   );
+
+export type UpdateAuthUserProfileParams = {
+  accessToken: string;
+  refreshToken: string;
+  userId: string | number;
+  gender: string;
+  dob: string;
+};
+
+export const updateAuthUserProfile = ({
+  accessToken,
+  refreshToken,
+  userId,
+  gender,
+  dob,
+}: UpdateAuthUserProfileParams) => {
+  const formData = new FormData();
+  formData.append('userId', String(userId));
+  formData.append('gender', String(gender));
+  formData.append('dob', String(dob));
+
+  return axios.post(
+    `${REGISTER_BASE_URL.replace(/\/$/, '')}/user/updateUser`,
+    formData,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'X-REFRESH-TOKEN': refreshToken,
+        'Content-Type': 'multipart/form-data',
+      },
+    },
+  );
+};
 
 /** PREVENTIVE_BASE_URL — legacy patient-auth register (unchanged). */
 export interface PatientRegisterOtpPayload {

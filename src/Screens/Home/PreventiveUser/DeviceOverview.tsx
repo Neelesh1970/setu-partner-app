@@ -20,6 +20,7 @@ import CustomPopup from "../Components/CustomPopup";
 import { getPreventiveCartStore } from "../../../Utils/preventiveCartStore";
 
 import { addToCart, syncCart } from "./PreventiveHealthAPI";
+import { shouldBlockDeviceAddDueToExclusiveScan } from "./exclusiveScanDevices";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 const BANNER_H = Math.min(SCREEN_W * 0.65, ms(280));
@@ -31,6 +32,7 @@ const DeviceOverview = ({ navigation, route }: any) => {
 
   const [refreshing, setRefreshing] = useState(false);
   const [addedVisible, setAddedVisible] = useState(false);
+  const [exclusiveScanPopupVisible, setExclusiveScanPopupVisible] = useState(false);
   const [isAddingToCart, setIsAddingToCart] = useState(false);
   const [cartData, setCartData] = useState<any>(null);
   const [cartLoaded, setCartLoaded] = useState(false);
@@ -116,6 +118,12 @@ const DeviceOverview = ({ navigation, route }: any) => {
     const itemId = device?.id ?? null;
     if (!isActive || isAddingToCart || isCurrentDeviceAdded) return;
 
+    const cartItems = Array.isArray(cartData?.items) ? cartData.items : [];
+    if (shouldBlockDeviceAddDueToExclusiveScan(cartItems, itemId)) {
+      setExclusiveScanPopupVisible(true);
+      return;
+    }
+
     try {
       setIsAddingToCart(true);
       if (itemId) {
@@ -135,7 +143,7 @@ const DeviceOverview = ({ navigation, route }: any) => {
       const res = await syncCart();
       setCartData(res ?? null);
       setAddedVisible(true);
-    } catch (e) {
+    } catch {
     } finally {
       setIsAddingToCart(false);
     }
@@ -262,6 +270,16 @@ const DeviceOverview = ({ navigation, route }: any) => {
         title="Product added to cart"
         message="Successfully"
         iconName="checkmark-circle-outline"
+        confirmText="OK"
+      />
+      <CustomPopup
+        isVisible={exclusiveScanPopupVisible}
+        onClose={() => setExclusiveScanPopupVisible(false)}
+        onConfirm={() => setExclusiveScanPopupVisible(false)}
+        title="Important"
+        message="Only one of these scan tests can be added to your cart at a time. You cannot add other devices along with it to perform the test."
+        iconName="alert-circle-outline"
+        iconColor="#F59E0B"
         confirmText="OK"
       />
     </>
