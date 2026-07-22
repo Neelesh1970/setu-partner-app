@@ -28,11 +28,6 @@ export function deriveCompletedBookingItemIds(
     return [];
   }
 
-  const testStatus = (payload.booking?.testStatus ?? '').trim().toUpperCase();
-  if (testStatus === 'PENDING') {
-    return [];
-  }
-
   const testsByName = new Map(
     (payload.tests ?? []).map(test => [normalizeReportTestName(test.testName), test]),
   );
@@ -46,7 +41,10 @@ export function deriveCompletedBookingItemIds(
       continue;
     }
     if (hasSavedParameterValues(test.parameters)) {
-      completed.push(device.booking_item_id);
+      const bookingItemId = device.booking_item_id;
+      if (bookingItemId) {
+        completed.push(bookingItemId);
+      }
     }
   }
 

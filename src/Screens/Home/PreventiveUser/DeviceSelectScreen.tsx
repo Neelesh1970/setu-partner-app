@@ -40,6 +40,10 @@ import {
 import { selectCompletedBookingItemIds } from '../../../features/deviceSelect/selectors';
 import { fetchBookingHospitalMrn } from '../../../features/booking/bookingSlice';
 import { bookingDevicesIncludeGenvcareScan } from '../../../Utils/labPatientGenvcare';
+import {
+  getPackageDisplayTests,
+  isPerformableLabDevice,
+} from '../../../Utils/labPatientDevices';
 
 const PRIMARY = COLORS.PRIMARY;
 const PAGE_BG = '#F3F4F6';
@@ -132,17 +136,41 @@ const DeviceSelectScreen: React.FC = () => {
   const [popupMessage, setPopupMessage] = useState('');
   const [isPdfLoading, setIsPdfLoading] = useState(false);
 
+  const displayPackages = useMemo(
+    () =>
+      packages.map(pkg => ({
+        ...pkg,
+        included_tests: getPackageDisplayTests(pkg, devices),
+      })),
+    [packages, devices],
+  );
+
+  /** Standalone devices only; package tests render under their package heading. */
+  const displayStandaloneDevices = useMemo(
+    () => (packages.length > 0 ? [] : devices),
+    [packages.length, devices],
+  );
+
   const allDevices: RawDeviceItem[] = useMemo(
     () => [
-      ...devices,
-      ...packages.flatMap((p: RawPackageItem) => p.included_tests ?? []),
+      ...displayStandaloneDevices,
+      ...displayPackages.flatMap(p => p.included_tests ?? []),
     ],
-    [devices, packages],
+    [displayStandaloneDevices, displayPackages],
   );
-  const totalCount = allDevices.length;
-  const allDone =
-    totalCount > 0 &&
-    allDevices.every(device => completedIds.includes(device.booking_item_id));
+
+  const performableDevices = useMemo(
+    () => allDevices.filter(isPerformableLabDevice),
+    [allDevices],
+  );
+
+  const totalCount = performableDevices.length;
+  const completedPerformableCount = performableDevices.filter(
+    device =>
+      device.booking_item_id != null &&
+      completedIds.includes(device.booking_item_id),
+  ).length;
+  const canGeneratePdf = completedPerformableCount > 0;
 
   const hasGenvcareScan = useMemo(
     () => bookingDevicesIncludeGenvcareScan(allDevices),
@@ -171,7 +199,20 @@ const DeviceSelectScreen: React.FC = () => {
       dispatch(markDeviceCompleted({ bookingId, bookingItemId: pending }));
     }
     if (bookingId && allDevices.length > 0) {
-      void dispatch(hydrateDeviceSelectFromPayload({ bookingId, devices: allDevices }));
+      void dispatch(hydrateDeviceSelectFromPayload({ bookingId, devices: allDevices }))
+        .unwrap()
+        .then(result => {
+          console.log('[DeviceSelect] Report payload hydration', {
+            bookingId,
+            completedFromPayload: result.bookingItemIds,
+          });
+        })
+        .catch(error => {
+          console.warn('[DeviceSelect] Report payload hydration failed', {
+            bookingId,
+            error,
+          });
+        });
     }
   }, [allDevices, bookingId, dispatch]);
 
@@ -198,6 +239,13 @@ const DeviceSelectScreen: React.FC = () => {
   const handlePerform = useCallback(
     (device: RawDeviceItem) => {
       void (async () => {
+        if (!isPerformableLabDevice(device)) {
+          setPopupTitle('Device Unavailable');
+          setPopupMessage(`No device available for ${device.device_name}`);
+          setPopupVisible(true);
+          return;
+        }
+
         const genvcareResult = await runGenvcarePerformTestIfApplicable(
           navigation.navigate,
           {
@@ -279,13 +327,16 @@ const DeviceSelectScreen: React.FC = () => {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {devices.length > 0 && (
+          {displayStandaloneDevices.length > 0 && (
             <View style={styles.group}>
-              {devices.map((device, i) => (
+              {displayStandaloneDevices.map((device, i) => (
                 <DeviceCard
                   key={`dev-${device.device_id}-${i}`}
                   device={device}
-                  isDone={completedIds.includes(device.booking_item_id)}
+                  isDone={
+                    device.booking_item_id != null &&
+                    completedIds.includes(device.booking_item_id)
+                  }
                   onPerform={handlePerform}
                   hospitalMrn={hospitalMrn}
                 />
@@ -293,14 +344,17 @@ const DeviceSelectScreen: React.FC = () => {
             </View>
           )}
 
-          {packages.map((pkg: RawPackageItem, pIdx: number) => (
+          {displayPackages.map((pkg: RawPackageItem, pIdx: number) => (
             <View key={`pkg-${pkg.package_id}-${pIdx}`} style={styles.group}>
               <Text style={styles.pkgLabel}>{pkg.package_name}</Text>
               {(pkg.included_tests ?? []).map((test: RawDeviceItem, tIdx: number) => (
                 <DeviceCard
                   key={`test-${test.device_id}-${tIdx}`}
                   device={test}
-                  isDone={completedIds.includes(test.booking_item_id)}
+                  isDone={
+                    test.booking_item_id != null &&
+                    completedIds.includes(test.booking_item_id)
+                  }
                   onPerform={handlePerform}
                   hospitalMrn={hospitalMrn}
                 />
@@ -312,17 +366,17 @@ const DeviceSelectScreen: React.FC = () => {
           <View style={{ height: vs(8) }} />
         </ScrollView>
 
-        {/* Generate PDF — sticky footer, enabled only when all devices are done */}
+        {/* Generate PDF — enabled once at least one performable test is done */}
         <SafeAreaView edges={['bottom']} style={styles.pdfFooter}>
           <View style={styles.pdfProgressRow}>
             <Text style={styles.pdfProgressText}>
-              {completedIds.length} / {totalCount} tests completed
+              {completedPerformableCount} / {totalCount} tests completed
             </Text>
           </View>
           <TouchableOpacity
-            style={[styles.pdfBtn, !allDone && styles.pdfBtnDisabled]}
+            style={[styles.pdfBtn, !canGeneratePdf && styles.pdfBtnDisabled]}
             onPress={() => { void handleGeneratePdf(); }}
-            disabled={!allDone || isPdfLoading}
+            disabled={!canGeneratePdf || isPdfLoading}
             activeOpacity={0.88}
             accessibilityRole="button"
           >
@@ -333,10 +387,10 @@ const DeviceSelectScreen: React.FC = () => {
                 <Ionicons
                   name="document-text-outline"
                   size={ms(18)}
-                  color={allDone ? COLORS.WHITE : '#9CA3AF'}
+                  color={canGeneratePdf ? COLORS.WHITE : '#9CA3AF'}
                   style={{ marginRight: ms(8) }}
                 />
-                <Text style={[styles.pdfBtnText, !allDone && styles.pdfBtnTextDisabled]}>
+                <Text style={[styles.pdfBtnText, !canGeneratePdf && styles.pdfBtnTextDisabled]}>
                   Generate PDF
                 </Text>
               </>

@@ -7,6 +7,7 @@ import profileReducer from '../features/profile/profileSlice';
 import preventiveReducer from '../features/preventive/preventiveSlice';
 import backgroundImageReducer from '../features/backgroundImage/backgroundImageSlice';
 import deviceSelectReducer from '../features/deviceSelect/deviceSelectSlice';
+import labReportsReducer from '../features/labReports/labReportsSlice';
 
 export const store = configureStore({
   reducer: {
@@ -18,6 +19,7 @@ export const store = configureStore({
     preventive: preventiveReducer,
     backgroundImage: backgroundImageReducer,
     deviceSelect: deviceSelectReducer,
+    labReports: labReportsReducer,
   },
 });
 

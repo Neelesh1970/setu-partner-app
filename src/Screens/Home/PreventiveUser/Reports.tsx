@@ -33,10 +33,21 @@ import CustomPopup from '../Components/CustomPopup';
 import ReportPdfViewer from '../../../Components/ReportPdfViewer/ReportPdfViewer';
 import { COLORS } from '../../../Constants/theme';
 import type { RootStackParamList } from '../../../navigation/types';
-import { getLabReports, type LabReportsResponse } from '../../../api/labReportsApi';
-import axiosInstance, { isLabWorkerApiPath } from '../../../api/axiosInstance';
-import { BASE_URL } from '../../../api/apiConfig';
-import { getLabPatients, collectCashPayment, type LabPatientFilter } from './PreventiveHealthAPI';
+import axiosInstance from '../../../api/axiosInstance';
+import { collectCashPayment, getLabPatients, type LabPatientFilter } from './PreventiveHealthAPI';
+import { useAppDispatch, useAppSelector } from '../../../store/hooks';
+import {
+  REPORT_TAB_PREVENTIVE,
+  REPORT_TAB_CANCER,
+  setLabReportsTab,
+  fetchPreventiveLabReports,
+  fetchCancerLabReports,
+  buildCancerQueryFromFilters,
+  selectLabReportsTab,
+  selectActiveLabReports,
+  type LabReportRow,
+  type LabReportsTab,
+} from '../../../features/labReports/labReportsSlice';
 
 const PRIMARY = COLORS.PRIMARY;
 const TEXT_MUTED = '#6B7280';
@@ -46,6 +57,15 @@ const REPORTS_PER_PAGE = 10;
 const CHIP_BORDER = '#D1D5DB';
 const SIDEBAR_INACTIVE_BG = '#F3F4F6';
 const MODAL_RADIUS = ms(20);
+const CARD_BG = '#F8FAFF';
+const CARD_BORDER = '#E2E8F0';
+const TEXT_MUTED_TAB = '#64748B';
+const HPAD = ms(16);
+
+const REPORT_TABS: { key: LabReportsTab; label: string }[] = [
+  { key: REPORT_TAB_PREVENTIVE, label: 'Preventive' },
+  { key: REPORT_TAB_CANCER, label: 'Cancer' },
+];
 
 const { height: SCREEN_H } = Dimensions.get('window');
 const SHEET_MAX_H = Math.min(SCREEN_H * 0.82, SCREEN_H - vs(40));
@@ -66,6 +86,8 @@ const TEST_TYPE_OPTIONS = [
   'Auto Refractometer',
 ];
 
+const CANCER_TEST_TYPE_OPTIONS = ['Oral Scan', 'Breast', 'Cervical'];
+
 const TIME_RANGE_OPTIONS = [
   'Today',
   'Yesterday',
@@ -76,19 +98,7 @@ const TIME_RANGE_OPTIONS = [
   'Custom Range',
 ];
 
-type ReportRow = {
-  id: string;
-  bookingId?: string | null;
-  /** Direct S3/CDN URL from the list API — used by the download flow to avoid an extra round-trip. */
-  reportUrl?: string | null;
-  name: string;
-  patientId: string;
-  dateLabel: string;
-  reportType: string;
-  paymentMethod?: string | null;
-  paymentStatus?: string | null;
-  amount?: string | null;
-};
+type ReportRow = LabReportRow;
 
 type ReportByBookingResponse = {
   success: boolean;
@@ -132,10 +142,12 @@ function CheckboxRow({
   label,
   checked,
   onToggle,
+  hint,
 }: {
   label: string;
   checked: boolean;
   onToggle: () => void;
+  hint?: string;
 }) {
   return (
     <TouchableOpacity
@@ -145,10 +157,13 @@ function CheckboxRow({
       accessibilityRole="checkbox"
       accessibilityState={{ checked }}
     >
-      <View style={[styles.checkBox, checked && styles.checkBoxOn]}>
+      <View style={[styles.checkBox, hint && styles.checkBoxWithHint, checked && styles.checkBoxOn]}>
         {checked ? <Ionicons name="checkmark" size={ms(14)} color={PRIMARY} /> : null}
       </View>
-      <Text style={styles.checkLabel}>{label}</Text>
+      <View style={styles.checkLabelWrap}>
+        <Text style={styles.checkLabel}>{label}</Text>
+        {hint ? <Text style={styles.checkHint}>{hint}</Text> : null}
+      </View>
     </TouchableOpacity>
   );
 }
@@ -270,24 +285,6 @@ function toRangeParam(appliedTimes: string[]): { range?: string; from_date?: str
   }
 }
 
-function formatDateLabel(isoLike: string | undefined): string {
-  if (!isoLike) return '';
-  const d = new Date(isoLike);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
-function resolveTotalPages(res: LabReportsResponse | null, limit: number): number {
-  const pag = res?.pagination;
-  if (typeof pag?.total_pages === 'number' && pag.total_pages > 0) {
-    return pag.total_pages;
-  }
-  if (typeof pag?.total === 'number' && pag.total > 0) {
-    return Math.max(1, Math.ceil(pag.total / limit));
-  }
-  return 1;
-}
-
 function getVisiblePageNumbers(currentPage: number, totalPages: number): number[] {
   if (totalPages <= 4) {
     return Array.from({ length: totalPages }, (_, i) => i + 1);
@@ -305,17 +302,21 @@ const Reports: React.FC = () => {
   const navigation = useNavigation<ReportsNav>();
   const route = useRoute<ReportsRouteProp>();
   const insets = useSafeAreaInsets();
+  const dispatch = useAppDispatch();
   // bookingId passed from RemidioQRScanner after Generate PDF — auto-opens the report on mount
   const autoOpenBookingId = route.params?.bookingId ?? null;
   const autoOpenTriggeredRef = useRef(false);
 
+  const reportTab = useAppSelector(selectLabReportsTab);
+  const activeReports = useAppSelector(selectActiveLabReports);
+  const rows = activeReports.rows;
+  const isLoading = activeReports.loading;
+  const currentPage = activeReports.page;
+  const totalPages = activeReports.totalPages;
+
   const [appliedTests, setAppliedTests] = useState<string[]>([]);
   const [appliedTimes, setAppliedTimes] = useState<string[]>([]);
-  const [rows, setRows] = useState<ReportRow[] | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
 
   const [reportVisible, setReportVisible] = useState(false);
   const [reportUrl, setReportUrl] = useState<string>('');
@@ -332,22 +333,32 @@ const Reports: React.FC = () => {
   const [draftTimes, setDraftTimes] = useState<string[]>([]);
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
-  const requestSeq = useRef(0);
   const listScrollRef = useRef<FlashListRef<ReportRow>>(null);
   const scrollAfterPageLoadRef = useRef(false);
 
   const chips: ChipItem[] = useMemo(() => {
-    const testItems = appliedTests.map((label) => ({ key: `t:${label}`, label }));
-    const timeItems = appliedTimes.map((label) => ({ key: `r:${label}`, label }));
+    const testSource =
+      reportTab === REPORT_TAB_CANCER
+        ? appliedTests.filter(label => CANCER_TEST_TYPE_OPTIONS.includes(label))
+        : appliedTests;
+    const testItems = testSource.map(label => ({ key: `t:${label}`, label }));
+    const timeItems = appliedTimes.map(label => ({ key: `r:${label}`, label }));
     return [...testItems, ...timeItems];
-  }, [appliedTests, appliedTimes]);
+  }, [appliedTests, appliedTimes, reportTab]);
+
+  const filterTestTypeOptions =
+    reportTab === REPORT_TAB_CANCER ? CANCER_TEST_TYPE_OPTIONS : TEST_TYPE_OPTIONS;
 
   const openFilter = useCallback(() => {
-    setDraftTests([...appliedTests]);
+    const testsForTab =
+      reportTab === REPORT_TAB_CANCER
+        ? appliedTests.filter(label => CANCER_TEST_TYPE_OPTIONS.includes(label))
+        : appliedTests;
+    setDraftTests([...testsForTab]);
     setDraftTimes([...appliedTimes]);
     setSidebarTab('testType');
     setFilterVisible(true);
-  }, [appliedTests, appliedTimes]);
+  }, [appliedTests, appliedTimes, reportTab]);
 
   const closeFilter = useCallback(() => {
     setFilterVisible(false);
@@ -361,10 +372,20 @@ const Reports: React.FC = () => {
   }, []);
 
   const applyFilters = useCallback(() => {
-    setAppliedTests([...draftTests]);
+    if (reportTab === REPORT_TAB_CANCER) {
+      const cancerTests = draftTests.filter(label =>
+        CANCER_TEST_TYPE_OPTIONS.includes(label),
+      );
+      const otherTests = appliedTests.filter(
+        label => !CANCER_TEST_TYPE_OPTIONS.includes(label),
+      );
+      setAppliedTests([...otherTests, ...cancerTests]);
+    } else {
+      setAppliedTests([...draftTests]);
+    }
     setAppliedTimes([...draftTimes]);
     setFilterVisible(false);
-  }, [draftTests, draftTimes]);
+  }, [appliedTests, draftTests, draftTimes, reportTab]);
 
   const removeChipByKey = useCallback(
     (key: string) => {
@@ -374,6 +395,10 @@ const Reports: React.FC = () => {
       } else if (key.startsWith('r:')) {
         const label = key.slice(2);
         setAppliedTimes((prev) => prev.filter((x) => x !== label));
+        if (label === 'Custom Range') {
+          setCustomFrom('');
+          setCustomTo('');
+        }
       }
     },
     []
@@ -381,92 +406,58 @@ const Reports: React.FC = () => {
 
   const showCustomRange = draftTimes.includes('Custom Range');
 
-  const fetchReports = useCallback(
-    async (page = 1, limit = REPORTS_PER_PAGE, opts?: { skipLoading?: boolean }) => {
-      const seq = ++requestSeq.current;
-      const showLoading = !opts?.skipLoading;
-      if (showLoading) {
-        setIsLoading(true);
-      }
-      try {
-        const rangePayload = toRangeParam(appliedTimes);
-        // Fetch reports and completed patients in parallel so we can show
-        // the "Collect Cash" button for cash-payment rows without an extra serial call.
-        const [res, completedPatients] = await Promise.all([
-          getLabReports({
-            test_types: appliedTests,
-            range: rangePayload.range ?? 'last_30_days',
-            from_date:
-              rangePayload.range === 'custom' ? (customFrom?.trim() ? customFrom.trim() : null) : null,
-            to_date:
-              rangePayload.range === 'custom' ? (customTo?.trim() ? customTo.trim() : null) : null,
-            page,
-            limit,
-          }),
-          getLabPatients('completed').catch(() => []),
-        ]);
-        if (seq !== requestSeq.current) return;
-
-        // Build a booking_id → payment info lookup from the patients list.
-        const paymentByBookingId = new Map(
-          completedPatients
-            .filter((p) => p.booking_id)
-            .map((p) => [
-              String(p.booking_id).trim(),
-              {
-                paymentMethod: p.payment_method ?? null,
-                paymentStatus: p.payment_status ?? null,
-                amount: p.amount ?? null,
-              },
-            ]),
-        );
-
-        const mapped: ReportRow[] = (res.data ?? []).map((r) => {
-          const types = Array.isArray(r.test_types) ? r.test_types : [];
-          const reportType = types.length ? types.join(', ') : 'Report';
-          const dateLabel = formatDateLabel(r.booking_date ?? r.created_at) || '—';
-          const patientId =
-            (r.patient_phone && String(r.patient_phone)) ||
-            (r.patient_id ? String(r.patient_id).slice(0, 10).toUpperCase() : '—');
-          const bookingId = r.booking_id ?? null;
-          const payment = bookingId ? (paymentByBookingId.get(String(bookingId).trim()) ?? null) : null;
-          return {
-            id: r.id ?? r.booking_id,
-            bookingId,
-            reportUrl: r.report_url ?? null,
-            name: r.patient_name ?? '—',
-            patientId,
-            dateLabel,
-            reportType,
-            paymentMethod: payment?.paymentMethod ?? null,
-            paymentStatus: payment?.paymentStatus ?? null,
-            amount: payment?.amount ?? null,
-          };
+  const loadReports = useCallback(
+    async (page = 1, opts?: { force?: boolean }) => {
+      const force = opts?.force ?? false;
+      if (reportTab === REPORT_TAB_CANCER) {
+        const cancerQuery = buildCancerQueryFromFilters({
+          appliedTests: appliedTests.filter(label =>
+            CANCER_TEST_TYPE_OPTIONS.includes(label),
+          ),
+          appliedTimes,
+          customFrom,
+          customTo,
+          page,
+          limit: REPORTS_PER_PAGE,
         });
-        setRows(mapped);
-        setCurrentPage(page);
-        setTotalPages(resolveTotalPages(res, limit));
-      } catch (e) {
-        if (seq !== requestSeq.current) return;
-        setRows([]);
-        setTotalPages(1);
-      } finally {
-        if (seq === requestSeq.current && showLoading) {
-          setIsLoading(false);
-        }
+        await dispatch(fetchCancerLabReports({ ...cancerQuery, force }));
+        return;
       }
+
+      const rangePayload = toRangeParam(appliedTimes);
+      await dispatch(
+        fetchPreventiveLabReports({
+          test_types: appliedTests,
+          range: rangePayload.range ?? 'last_30_days',
+          from_date:
+            rangePayload.range === 'custom'
+              ? customFrom?.trim()
+                ? customFrom.trim()
+                : null
+              : null,
+          to_date:
+            rangePayload.range === 'custom'
+              ? customTo?.trim()
+                ? customTo.trim()
+                : null
+              : null,
+          page,
+          limit: REPORTS_PER_PAGE,
+          force,
+        }),
+      );
     },
-    [appliedTests, appliedTimes, customFrom, customTo],
+    [appliedTests, appliedTimes, customFrom, customTo, dispatch, reportTab],
   );
 
   const onPullRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await fetchReports(currentPage, REPORTS_PER_PAGE, { skipLoading: true });
+      await loadReports(currentPage, { force: true });
     } finally {
       setRefreshing(false);
     }
-  }, [fetchReports, currentPage]);
+  }, [loadReports, currentPage]);
 
   const goToPage = useCallback(
     (page: number) => {
@@ -474,9 +465,9 @@ const Reports: React.FC = () => {
         return;
       }
       scrollAfterPageLoadRef.current = true;
-      void fetchReports(page);
+      void loadReports(page, { force: true });
     },
-    [currentPage, fetchReports, isLoading, totalPages],
+    [currentPage, loadReports, isLoading, totalPages],
   );
 
   const visiblePages = getVisiblePageNumbers(currentPage, totalPages);
@@ -601,6 +592,27 @@ const Reports: React.FC = () => {
     }
   }, []);
 
+  /** Prefer list `report_url` (Cancer GenVCare / Preventive) so view works without an extra round-trip. */
+  const openReportFromItem = useCallback(
+    async (item: ReportRow) => {
+      const directUrl = String(item.reportUrl ?? '').trim();
+      if (directUrl) {
+        unstable_batchedUpdates(() => {
+          setReportError('');
+          setReportLoading(false);
+          setViewerLoading(true);
+          setReportUrl(directUrl);
+          setReportBookingId(String(item.bookingId ?? item.id ?? ''));
+          setReportNonce(n => n + 1);
+          setReportVisible(true);
+        });
+        return;
+      }
+      await openReportByBookingId(item.bookingId ?? item.id);
+    },
+    [openReportByBookingId],
+  );
+
   const goToTestDetailsByBookingId = useCallback(
     async (bookingId: string | undefined | null) => {
       const id = String(bookingId ?? '').trim();
@@ -613,7 +625,7 @@ const Reports: React.FC = () => {
           const found = list.find((p) => String(p.booking_id ?? '').trim() === id);
           const patientId = String(found?.id ?? '').trim();
           if (patientId) {
-            navigation.navigate('TestDetails', { patientId, filter });
+            navigation.navigate('TestDetails', { patientId, filter, bookingId: id });
             return;
           }
         }
@@ -651,11 +663,27 @@ const Reports: React.FC = () => {
 
   useFocusEffect(
     useCallback(() => {
-      scrollAfterPageLoadRef.current = false;
-      fetchReports(1);
+      // Match MyBookings: always land on the default tab when screen is focused.
+      dispatch(setLabReportsTab(REPORT_TAB_PREVENTIVE));
       return undefined;
-    }, [fetchReports]),
+    }, [dispatch]),
   );
+
+  const onReportTabPress = useCallback(
+    (key: LabReportsTab) => {
+      if (key === reportTab) {
+        return;
+      }
+      scrollAfterPageLoadRef.current = false;
+      dispatch(setLabReportsTab(key));
+    },
+    [dispatch, reportTab],
+  );
+
+  useEffect(() => {
+    scrollAfterPageLoadRef.current = false;
+    void loadReports(1);
+  }, [loadReports]);
 
   useEffect(() => {
     if (!isLoading && scrollAfterPageLoadRef.current) {
@@ -677,7 +705,7 @@ const Reports: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const reportRowCount = (rows ?? []).length;
+  const reportRowCount = rows.length;
 
   const renderReportItem = useCallback(
     ({ item, index }: { item: ReportRow; index: number }) => (
@@ -688,10 +716,7 @@ const Reports: React.FC = () => {
           void goToTestDetailsByBookingId(item.bookingId ?? item.id);
         }}
         onView={() => {
-          if (!item.bookingId) {
-            return;
-          }
-          openReportByBookingId(item.bookingId);
+          void openReportFromItem(item);
         }}
         onDownload={() => {
           void downloadReport(item);
@@ -719,7 +744,7 @@ const Reports: React.FC = () => {
     [
       reportRowCount,
       goToTestDetailsByBookingId,
-      openReportByBookingId,
+      openReportFromItem,
       downloadReport,
       collectingCashId,
       downloadingIds,
@@ -810,35 +835,57 @@ const Reports: React.FC = () => {
       <View style={styles.flex1}>
         <View style={styles.headerShell}>
           <SafeAreaView edges={['top']} style={styles.headerSafe}>
-            <PreventiveHealthHeader title="Reports" onBackPress={() => navigation.goBack()} />
+            <PreventiveHealthHeader
+              title="Reports"
+              onBackPress={() => navigation.goBack()}
+              showRight1
+              rightIcon1="options-outline"
+              onRightPress1={openFilter}
+            />
           </SafeAreaView>
         </View>
 
-        <View style={styles.filterRow}>
-          <ScrollView
-            style={styles.chipScrollWrap}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipScroll}
-          >
-            {chips.map((c) => (
-              <FilterChip key={c.key} label={c.label} onRemove={() => removeChipByKey(c.key)} />
-            ))}
-          </ScrollView>
-          <TouchableOpacity
-            style={styles.filterIconBtn}
-            onPress={openFilter}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Open filters"
-          >
-            <Ionicons name="options-outline" size={ms(26)} color={TEXT_DARK} />
-          </TouchableOpacity>
+        <View style={styles.tabRowOuter}>
+          <View style={styles.tabRow}>
+            {REPORT_TABS.map(({ key, label }) => {
+              const active = reportTab === key;
+              return (
+                <TouchableOpacity
+                  key={key}
+                  activeOpacity={0.85}
+                  style={[styles.tabChip, active && styles.tabChipActive]}
+                  onPress={() => onReportTabPress(key)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={`${label} reports`}
+                >
+                  <Text style={[styles.tabChipText, active && styles.tabChipTextActive]}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
+
+        {chips.length > 0 ? (
+          <View style={styles.filterRow}>
+            <ScrollView
+              style={styles.chipScrollWrap}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chipScroll}
+            >
+              {chips.map((c) => (
+                <FilterChip key={c.key} label={c.label} onRemove={() => removeChipByKey(c.key)} />
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
 
         <FlashList
           ref={listScrollRef}
-          data={rows ?? []}
+          data={rows}
           renderItem={renderReportItem}
           keyExtractor={item => item.id}
           style={styles.scroll}
@@ -856,7 +903,11 @@ const Reports: React.FC = () => {
           ListEmptyComponent={
             !isLoading ? (
               <View style={styles.emptyStateWrap}>
-                <Text style={styles.emptyStateText}>No reports Available</Text>
+                <Text style={styles.emptyStateText}>
+                  {reportTab === REPORT_TAB_CANCER
+                    ? 'No cancer reports found'
+                    : 'No reports Available'}
+                </Text>
               </View>
             ) : null
           }
@@ -954,7 +1005,7 @@ const Reports: React.FC = () => {
                 keyboardShouldPersistTaps="handled"
               >
                 {sidebarTab === 'testType' ? (
-                  TEST_TYPE_OPTIONS.map((opt) => (
+                  filterTestTypeOptions.map((opt) => (
                     <CheckboxRow
                       key={opt}
                       label={opt}
@@ -968,6 +1019,7 @@ const Reports: React.FC = () => {
                       <CheckboxRow
                         key={opt}
                         label={opt}
+                        hint={opt === 'Custom Range' ? 'YYYY-MM-DD' : undefined}
                         checked={draftTimes.includes(opt)}
                         onToggle={() => setDraftTimes((p) => toggleInList(p, opt))}
                       />
@@ -1003,7 +1055,7 @@ const Reports: React.FC = () => {
 
             <View style={styles.sheetFooter}>
               {/* <View style={styles.resultBlock}>
-                  <Text style={styles.resultCount}>{isLoading ? '…' : String((rows ?? []).length)}</Text>
+                  <Text style={styles.resultCount}>{isLoading ? '…' : String(rows.length)}</Text>
                   <Text style={styles.resultSub}>Test Found</Text>
                 </View> */}
               <TouchableOpacity style={styles.applyBtn} onPress={applyFilters} activeOpacity={0.9}>
@@ -1122,6 +1174,38 @@ const styles = StyleSheet.create({
   headerSafe: {
     backgroundColor: PRIMARY,
   },
+  tabRowOuter: {
+    paddingHorizontal: HPAD,
+    paddingTop: vs(16),
+    paddingBottom: vs(12),
+  },
+  tabRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: CARD_BG,
+    borderRadius: ms(12),
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    padding: ms(4),
+  },
+  tabChip: {
+    flex: 1,
+    paddingVertical: vs(10),
+    borderRadius: ms(9),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabChipActive: {
+    backgroundColor: PRIMARY,
+  },
+  tabChipText: {
+    fontSize: s(13),
+    fontWeight: '700',
+    color: TEXT_MUTED_TAB,
+  },
+  tabChipTextActive: {
+    color: COLORS.WHITE,
+  },
   filterRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1159,10 +1243,6 @@ const styles = StyleSheet.create({
     fontSize: ms(13),
     fontWeight: '500',
     color: TEXT_DARK,
-  },
-  filterIconBtn: {
-    padding: ms(6),
-    flexShrink: 0,
   },
   scroll: {
     flex: 1,
@@ -1397,7 +1477,7 @@ const styles = StyleSheet.create({
   },
   checkRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingVertical: vs(10),
     gap: ms(10),
   },
@@ -1410,16 +1490,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.WHITE,
+    marginTop: vs(1),
+  },
+  checkBoxWithHint: {
+    marginTop: vs(2),
   },
   checkBoxOn: {
     borderColor: PRIMARY,
     backgroundColor: 'rgba(28, 57, 187, 0.06)',
   },
-  checkLabel: {
+  checkLabelWrap: {
     flex: 1,
+  },
+  checkLabel: {
     fontSize: ms(14),
     color: TEXT_DARK,
     fontWeight: '500',
+  },
+  checkHint: {
+    fontSize: ms(10),
+    color: '#888A8E',
+    marginTop: vs(2),
   },
   dateRow: {
     flexDirection: 'row',

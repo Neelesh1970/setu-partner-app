@@ -1,80 +1,10 @@
-// import axios from "axios";
-
-// /* ================= TYPES ================= */
-
-// export interface Device {
-//   id: string;
-//   device_name: string;
-//   image_url?: string;
-// }
-
-// export interface PackageItem {
-//   id: string;
-//   package_name: string;
-//   image_url?: string;
-// }
-
-// export interface Screening {
-//   id: string;
-//   title: string;
-//   slug?: string;
-// }
-
-// /* ================= BASE URL ================= */
-
-// export const PREVENTIVE_BASE_URL =
-//   "https://brake-approach-trying-stores.trycloudflare.com";
-
-// /* ================= API ================= */
-
-// export const getPreventiveDevices = async (): Promise<Device[]> => {
-//   const res = await axios.get(`${PREVENTIVE_BASE_URL}/api/v1/devices`);
-//   return res?.data?.data || [];
-// };
-
-// export const getPreventivePackages = async (): Promise<PackageItem[]> => {
-//   const res = await axios.get(`${PREVENTIVE_BASE_URL}/api/v1/packages`);
-//   return res?.data?.data || [];
-// };
-
-// export const getPreventiveHealthConcernScreenings = async (): Promise<Screening[]> => {
-//   const res = await axios.get(
-//     `${PREVENTIVE_BASE_URL}/api/v1/health-concern-screenings`
-//   );
-//   return res?.data?.data || [];
-// };
-
-// export const getPreventiveCart = async ({
-//   accessToken,
-//   refreshToken,
-// }: {
-//   accessToken: string;
-//   refreshToken: string;
-// }) => {
-//   const res = await axios.get(`${PREVENTIVE_BASE_URL}/api/v1/cart`, {
-//     headers: {
-//       Authorization: `Bearer ${accessToken}`,
-//       "x-refresh-token": refreshToken,
-//     },
-//   });
-
-//   return res?.data?.data || null;
-// };
-
-
-
-
-
-
-
-
-
 
 import axios from "axios";
 import { getRegisteredPatientAuthToken, getRegisteredPatientRefreshToken } from "../../../Utils/storage";
 import { getPreventiveCartStore } from "../../../Utils/preventiveCartStore";
 import axiosInstance from "../../../api/axiosInstance";
 import { PREVENTIVE_BASE_URL } from "../../../api/apiConfig";
+import { normalizeLabPatientDeviceData } from "../../../Utils/labPatientDevices";
 
 /* ================= BASE ================= */
 
@@ -316,7 +246,12 @@ export type LabPatientFilter =
 export type RawDeviceItem = {
   device_name: string;
   device_id: string;
-  booking_item_id: string;
+  booking_item_id: string | null;
+  is_active?: boolean;
+  status?: string;
+  booked?: boolean;
+  package_id?: string;
+  package_name?: string;
 };
 
 /** A package entry from `packages[]` in the new API response. */
@@ -629,23 +564,28 @@ type LabPatientsApiResponse = {
 export const getLabPatients = async (
   filter: LabPatientFilter,
 ): Promise<LabPatientRecord[]> => {
-  const res = await axiosInstance.get<LabPatientsApiResponse>("lab/patients", {
+  const labPatientsBaseUrl = `${PREVENTIVE_BASE_URL.replace(/\/$/, '')}/api/v1`;
+  const res = await axiosInstance.get<LabPatientsApiResponse>('lab/patients', {
     params: { filter },
+    baseURL: labPatientsBaseUrl,
   });
   const list = res.data?.data?.patients;
   if (!Array.isArray(list)) return [];
 
   return list.map((raw): LabPatientRecord => {
-    const standaloneDevices = raw.devices ?? [];
+    const flatDevices = raw.devices ?? [];
     const pkgs = raw.packages ?? [];
-    // Flatten all devices (standalone + from packages) into parallel arrays for backward compat.
-    const packageDevices = pkgs.flatMap(pkg => pkg.included_tests ?? []);
-    const allDevices = [...standaloneDevices, ...packageDevices];
+    const { devices, packages, allDevices } = normalizeLabPatientDeviceData(
+      flatDevices,
+      pkgs,
+    );
 
     const device_names = allDevices.map(d => d.device_name).filter(Boolean);
     const device_ids = allDevices.map(d => d.device_id).filter(Boolean);
-    const booking_item_ids = allDevices.map(d => d.booking_item_id).filter(Boolean);
-    const package_names = pkgs.map(pkg => pkg.package_name).filter(Boolean);
+    const booking_item_ids = allDevices.flatMap(d =>
+      d.booking_item_id ? [d.booking_item_id] : [],
+    );
+    const package_names = packages.map(pkg => pkg.package_name).filter(Boolean);
 
     return {
       id: raw.id,
@@ -672,9 +612,8 @@ export const getLabPatients = async (
       device_ids: device_ids.length > 0 ? device_ids : null,
       booking_item_ids: booking_item_ids.length > 0 ? booking_item_ids : null,
       package_names: package_names.length > 0 ? package_names : null,
-      // Preserve the structured raw data for multi-device selection in TestActivity.
-      devices: raw.devices ?? [],
-      packages: raw.packages ?? [],
+      devices,
+      packages,
     };
   });
 };
@@ -734,8 +673,10 @@ export const getReportPayload = async (
   if (!bid) {
     return null;
   }
+  const labApiBase = `${PREVENTIVE_BASE_URL.replace(/\/$/, '')}/api/v1`;
   const res = await axiosInstance.get<ReportPayloadApiResponse>('reports/payload', {
     params: { bookingId: bid },
+    baseURL: labApiBase,
   });
   return res.data?.data ?? null;
 };

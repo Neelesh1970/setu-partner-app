@@ -22,6 +22,7 @@ import PreventiveHealthHeader from "./PreventiveHealthHeader";
 
 import { getCart, removeFromCart, getPreventivePatients } from "./PreventiveHealthAPI";
 import { getPreventiveCartStore } from "../../../Utils/preventiveCartStore";
+import { getStoredPreventivePatientIdV1 } from "../../../Utils/preventivePatient";
 
 const COLORS = {
     headerBg: "#1C39BB",
@@ -99,13 +100,24 @@ export default function PreventiveCart({ navigation }: any) {
 
         setContinueLoading(true);
         try {
+            const storedPatientId = await getStoredPreventivePatientIdV1();
+            if (storedPatientId) {
+                console.log("[PreventiveFlow] PreventiveCart Continue — skip SelectPatient", {
+                    storedPatientId,
+                    nextScreen: "PreventiveBookingDetail",
+                });
+                navigation.navigate("PreventiveBookingDetail", { fromScreen: "PreventiveCart" });
+                return;
+            }
+
+            console.log("[PreventiveFlow] PreventiveCart Continue — no stored patient, GET /patients");
             const list = await getPreventivePatients();
             console.log("[PreventiveFlow] PreventiveCart Continue GET /patients", {
                 count: Array.isArray(list) ? list.length : 0,
                 patients: list,
             });
             if (Array.isArray(list) && list.length > 0) {
-                navigation.navigate("SelectPatient");
+                navigation.navigate("SelectPatient", { fromScreen: "PreventiveCart" });
             } else {
                 navigation.navigate("PatientDetail", { fromScreen: "PreventiveCart" });
             }

@@ -25,7 +25,10 @@ export type RootStackParamList = {
     mobile: string;
     registrationData: { mobile: string };
   };
-  TrialScreen: { mobile: string };
+  TrialScreen: {
+    mobile: string;
+    flowType?: 'login' | 'signup';
+  };
   BenefitScreen: undefined;
   SignUp: undefined;
   SignUpOTP: {
@@ -53,12 +56,12 @@ export type RootStackParamList = {
   PreventiveCart: undefined;
   SelectPatient:
     | {
-        fromScreen?: string;
+        fromScreen?: 'PreventiveHealth' | 'PreventiveCart' | 'SelectPatient' | 'Screening' | string;
         screening?: Record<string, unknown>;
       }
     | undefined;
   PatientDetail: {
-    fromScreen?: 'PreventiveCart' | 'SelectPatient' | 'Screening' | string;
+    fromScreen?: 'PreventiveHealth' | 'PreventiveCart' | 'SelectPatient' | 'Screening' | string;
     screening?: Record<string, unknown>;
   };
   SelectLocation:
@@ -82,6 +85,8 @@ export type RootStackParamList = {
   TestDetails: {
     patientId: string;
     filter: 'upcoming' | 'completed' | 'pending' | 'missed';
+    /** When set, resolves the exact lab booking row (same patient may have multiple bookings). */
+    bookingId?: string;
   };
   Reports: { bookingId?: string | null } | undefined;
   CashPaymentReceive: { bookingId: string; amount?: number | null };

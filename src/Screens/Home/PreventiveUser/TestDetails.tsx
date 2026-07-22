@@ -77,7 +77,21 @@ const TestDetails: React.FC = () => {
   const bottomPad = Math.max(insets.bottom, vs(16));
   const horizontalPad = Math.max(ms(12), Math.min(ms(20), windowWidth * 0.04));
 
-  const { patientId, filter } = route.params;
+  const { patientId, filter, bookingId } = route.params;
+
+  const findLabPatientInList = useCallback(
+    (list: LabPatientRecord[]) => {
+      const bookingKey = (bookingId ?? '').trim();
+      if (bookingKey) {
+        const byBooking = list.find(
+          (p) => (p.booking_id ?? '').trim() === bookingKey,
+        );
+        if (byBooking) return byBooking;
+      }
+      return list.find((p) => (p.id ?? '') === patientId) ?? null;
+    },
+    [bookingId, patientId],
+  );
 
   const [loading, setLoading] = useState(true);
   const [patient, setPatient] = useState<LabPatientRecord | null>(null);
@@ -170,12 +184,12 @@ const TestDetails: React.FC = () => {
       try {
         const tab = filter as LabPatientFilter;
         const list = await getLabPatients(tab);
-        let found = list.find((p) => (p.id ?? '') === patientId) ?? null;
+        let found = findLabPatientInList(list);
 
         // Upcoming list is derived from Pending in UI; keep details resilient without changing navigation params.
         if (!found && tab === 'upcoming') {
           const pendingList = await getLabPatients('pending');
-          found = pendingList.find((p) => (p.id ?? '') === patientId) ?? null;
+          found = findLabPatientInList(pendingList);
         }
         if (!cancelled) {
           setPatient(found);
@@ -194,7 +208,7 @@ const TestDetails: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [patientId, filter]);
+  }, [patientId, filter, findLabPatientInList]);
 
   const display = useMemo(() => {
     const p = patient;
@@ -213,7 +227,18 @@ const TestDetails: React.FC = () => {
       };
     }
     const pkg = (p.package_names ?? []).map((s) => (s ?? '').trim()).filter(Boolean);
-    const dev = (p.device_names ?? []).map((s) => (s ?? '').trim()).filter(Boolean);
+    const standaloneDev = (p.devices ?? [])
+      .map((d) => (d.device_name ?? '').trim())
+      .filter(Boolean);
+    const packageDev = (p.packages ?? [])
+      .flatMap((pk) => (pk.included_tests ?? []).map((t) => (t.device_name ?? '').trim()))
+      .filter(Boolean);
+    const dev =
+      packageDev.length > 0
+        ? packageDev
+        : standaloneDev.length > 0
+          ? standaloneDev
+          : (p.device_names ?? []).map((s) => (s ?? '').trim()).filter(Boolean);
     const testLines = (p.package_included_tests ?? [])
       .map((s) => (s ?? '').trim())
       .filter(Boolean);
@@ -230,6 +255,25 @@ const TestDetails: React.FC = () => {
       testLines,
     };
   }, [patient]);
+
+  useEffect(() => {
+    if (loading || !patient) return;
+
+    console.log('[TestDetails] Screen display data', {
+      patientId,
+      filter,
+      packageName: display.packageLine,
+      devices: display.deviceLine,
+      hasPackage: display.hasPackage,
+      packageNames: patient.package_names ?? [],
+      deviceNames: patient.device_names ?? [],
+      packages: (patient.packages ?? []).map(pkg => ({
+        packageName: pkg.package_name ?? null,
+        includedTests: (pkg.included_tests ?? []).map(t => t.device_name ?? null),
+      })),
+      standaloneDevices: (patient.devices ?? []).map(d => d.device_name ?? null),
+    });
+  }, [loading, patient, display, patientId, filter]);
 
   const tabFilter = filter as LabPatientFilter;
   const enforceSlotWindow =

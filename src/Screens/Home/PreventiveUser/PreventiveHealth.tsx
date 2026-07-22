@@ -29,7 +29,7 @@ import {
   getScreenings,
   getCart,
 } from "./PreventiveHealthAPI";
-import { resolvePreventivePatientUuid } from "../../../Utils/preventivePatient";
+import { resolvePreventivePatientUuid, getStoredPreventivePatientIdV1 } from "../../../Utils/preventivePatient";
 import { logStoredSessionToConsole } from "../../../Utils/storage";
 
 const { width } = Dimensions.get("window");
@@ -85,6 +85,9 @@ export default function PreventiveHealth({ navigation }: any) {
 
   useEffect(() => {
     void logStoredSessionToConsole("[PreventiveHealth]", "preventiveHealth");
+    void getStoredPreventivePatientIdV1().then(patientId => {
+      console.log("[PreventiveFlow] PreventiveHealth mount", { patientId });
+    });
   }, []);
 
   useFocusEffect(

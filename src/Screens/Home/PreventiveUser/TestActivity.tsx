@@ -411,7 +411,12 @@ const TestActivity: React.FC = () => {
     (p: LabPatientRecord) => {
       const id = (p.id ?? '').trim();
       if (!id) return;
-      navigation.navigate('TestDetails', { patientId: id, filter: activeTab });
+      const bookingKey = (p.booking_id ?? '').trim();
+      navigation.navigate('TestDetails', {
+        patientId: id,
+        filter: activeTab,
+        ...(bookingKey ? { bookingId: bookingKey } : {}),
+      });
     },
     [navigation, activeTab],
   );

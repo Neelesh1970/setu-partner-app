@@ -61,6 +61,8 @@ const TrialScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const route = useRoute<TrialRoute>();
   const mobile = route?.params?.mobile || '';
+  const flowType = route?.params?.flowType ?? 'signup';
+  const isLoginFlow = flowType === 'login';
 
   const insets = useSafeAreaInsets();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -149,7 +151,12 @@ const TrialScreen: React.FC = () => {
 
     try {
       console.log('======================================');
-      console.log('[PreventiveAuthSignUp] TRIAL CONFIRM REQUEST');
+      console.log(
+        isLoginFlow
+          ? '[PreventiveAuthLogin] NAME SUBMIT REQUEST'
+          : '[PreventiveAuthSignUp] TRIAL CONFIRM REQUEST',
+      );
+      console.log('Flow Type:', flowType);
       console.log('Phone:', mobile);
       console.log('First Name:', firstName.trim());
       console.log('Last Name:', lastName.trim());
@@ -195,10 +202,22 @@ const TrialScreen: React.FC = () => {
         }
 
         void logStoredSessionToConsole('[PreventiveAuthSignUp]', 'preventiveHealth');
-        navigation.navigate('BenefitScreen');
+        console.log('======================================');
+        console.log(
+          isLoginFlow
+            ? '[PreventiveAuthLogin] FLOW COMPLETE'
+            : '[PreventiveAuthSignUp] FLOW COMPLETE',
+        );
+        console.log('Next Screen: SelectPatient');
+        console.log(
+          'Next Step: GET /patients -> pick patient ->',
+          isLoginFlow ? 'PreventiveHealth' : 'BenefitScreen',
+        );
+        console.log('======================================');
+        navigation.replace('SelectPatient', { fromScreen: 'PreventiveHealth' });
       } else {
         showPopup({
-          title: 'Registration Failed',
+          title: isLoginFlow ? 'Login Failed' : 'Registration Failed',
           message:
             data?.message || 'Unable to complete registration. Please try again.',
           iconName: 'alert-circle',
@@ -211,12 +230,16 @@ const TrialScreen: React.FC = () => {
       const errorData = apiError?.response?.data;
 
       console.log('======================================');
-      console.log('[PreventiveAuthSignUp] TRIAL CONFIRM ERROR');
+      console.log(
+        isLoginFlow
+          ? '[PreventiveAuthLogin] NAME SUBMIT ERROR'
+          : '[PreventiveAuthSignUp] TRIAL CONFIRM ERROR',
+      );
       console.log('Error response:', JSON.stringify(errorData, null, 2));
       console.log('======================================');
 
       showPopup({
-        title: 'Registration Failed',
+        title: isLoginFlow ? 'Login Failed' : 'Registration Failed',
         message:
           errorData?.message || 'Something went wrong. Please try again.',
         iconName: 'alert-circle',
@@ -232,6 +255,7 @@ const TrialScreen: React.FC = () => {
     mobile,
     isSubmitting,
     navigation,
+    isLoginFlow,
     showPopup,
     closePopup,
   ]);
@@ -275,9 +299,13 @@ const TrialScreen: React.FC = () => {
           ]}
         >
           <DynamicModal
-            tabText="Sign up"
+            tabText={isLoginFlow ? 'Login' : 'Sign up'}
             title="Tell us about you"
-            subtitle="A few details to set up your free trial."
+            subtitle={
+              isLoginFlow
+                ? 'Enter your first and last name to continue.'
+                : 'A few details to set up your free trial.'
+            }
             cardWidth={cardWidth}
             cardHeight={cardHeight}
             buttonText={isSubmitting ? 'Please wait...' : 'Continue'}

@@ -27,6 +27,13 @@ async function readPatientIdV1(): Promise<string | null> {
   return null;
 }
 
+/** Patient UUID chosen on SelectPatient; used to skip re-selection after cart. */
+export async function getStoredPreventivePatientIdV1(): Promise<string | null> {
+  const patientId = await readPatientIdV1();
+  console.log(`${FLOW_LOG} getStoredPreventivePatientIdV1`, { patientId });
+  return patientId;
+}
+
 /** Resolves patient UUID for booking (`POST /bookings`). Reads `preventive_patient_id_v1` first. */
 export async function resolvePreventiveBookingIdentity(): Promise<PreventiveBookingIdentity> {
   const fromV1 = await readPatientIdV1();

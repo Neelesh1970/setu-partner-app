@@ -111,7 +111,10 @@ export default function PatientDetail({ navigation, route }: Props) {
   };
 
   const navigateBack = useCallback(() => {
-    if (fromScreen === 'Screening') {
+    if (fromScreen === 'PreventiveHealth') {
+      console.log('[PreventiveFlow] PatientDetail back -> SelectPatient (entry gate)');
+      navigation.navigate('SelectPatient', { fromScreen: 'PreventiveHealth' });
+    } else if (fromScreen === 'Screening') {
       navigation.navigate('PreventiveHealth');
     } else if (fromScreen === 'SelectPatient') {
       navigation.navigate('SelectPatient');
@@ -310,7 +313,14 @@ export default function PatientDetail({ navigation, route }: Props) {
         patientsCount: refreshed?.length ?? 0,
         fromScreen,
         screening,
+        nextScreen:
+          fromScreen === 'PreventiveHealth' ? 'PreventiveHealth' : 'PreventiveBookingDetail',
       });
+
+      if (fromScreen === 'PreventiveHealth') {
+        navigation.replace('PreventiveHealth');
+        return;
+      }
 
       navigation.navigate('PreventiveBookingDetail', {
         fromScreen,

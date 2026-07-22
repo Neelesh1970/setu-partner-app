@@ -63,6 +63,8 @@ const STORAGE_KEYS = {
   patientId: 'preventive_patient_id_v1',
 };
 
+const PREVENTIVE_ENTRY_FROM_SCREEN = 'PreventiveHealth';
+
 const MINIMUM_DOB = new Date(1900, 0, 1);
 const GENDER_OPTIONS = ['Male', 'Female', 'Other'] as const;
 
@@ -106,8 +108,13 @@ const formatGender = (gender?: string): string => {
   return v.charAt(0).toUpperCase() + v.slice(1).toLowerCase();
 };
 
-const formatEmail = (email?: string | null): string => {
-  const v = String(email || '').trim();
+const formatPhone = (phone?: string | null): string => {
+  const v = String(phone || '').trim();
+  return v || '—';
+};
+
+const formatUhid = (uhid?: string | null): string => {
+  const v = String(uhid || '').trim();
   return v || '—';
 };
 
@@ -128,6 +135,9 @@ function PatientCard({
   onDeletePress,
   deleteDisabled,
 }: PatientCardProps) {
+  const email = String(patient.email || '').trim();
+  const showAge = isPatientAgeValid(patient.age);
+
   return (
     <View style={[styles.patientCard, selected && styles.patientCardSelected]}>
       <TouchableOpacity activeOpacity={0.9} onPress={onPress} style={styles.patientSelectArea}>
@@ -135,10 +145,11 @@ function PatientCard({
           <Text style={styles.patientName}>{patient.full_name || '—'}</Text>
           <Text style={styles.patientMeta}>
             {formatGender(patient.gender)}
-            {patient.age != null ? ` · ${patient.age} yrs` : ''}
+            {showAge ? ` · ${patient.age} yrs` : ''}
           </Text>
-          <Text style={styles.patientMeta}>{patient.phone || '—'}</Text>
-          <Text style={styles.patientMeta}>{formatEmail(patient.email)}</Text>
+          <Text style={styles.patientMeta}>{formatPhone(patient.phone)}</Text>
+          <Text style={styles.patientMeta}>{formatUhid(patient.uhid)}</Text>
+          {email ? <Text style={styles.patientMeta}>{email}</Text> : null}
         </View>
       </TouchableOpacity>
       <View style={styles.patientActions}>
@@ -152,16 +163,17 @@ function PatientCard({
           >
             <Ionicons name="pencil-outline" size={ms(16)} color={COLORS.headerBg} />
           </TouchableOpacity>
-        ) : null}
-        <TouchableOpacity
-          activeOpacity={0.9}
-          onPress={onDeletePress}
-          disabled={deleteDisabled}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          style={styles.deleteBtn}
-        >
-          <Ionicons name="trash-outline" size={ms(16)} color={COLORS.delete} />
-        </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={onDeletePress}
+            disabled={deleteDisabled}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={styles.deleteBtn}
+          >
+            <Ionicons name="trash-outline" size={ms(16)} color={COLORS.delete} />
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -174,6 +186,10 @@ export default function SelectPatient({ navigation, route }: Props) {
   const patients = useSelector(selectPatientsList);
   const loading = useSelector(selectPatientsLoading);
   const { screening, fromScreen } = route?.params || {};
+  const isEntryGate = fromScreen === PREVENTIVE_ENTRY_FROM_SCREEN;
+  const emptyListFromScreen = isEntryGate
+    ? PREVENTIVE_ENTRY_FROM_SCREEN
+    : 'PreventiveCart';
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -191,32 +207,63 @@ export default function SelectPatient({ navigation, route }: Props) {
   const [updateBusy, setUpdateBusy] = useState(false);
   const [updateError, setUpdateError] = useState('');
 
+  useEffect(() => {
+    console.log('[PreventiveFlow] SelectPatient mount', {
+      fromScreen,
+      isEntryGate,
+      screening: screening ?? null,
+    });
+  }, [fromScreen, isEntryGate, screening]);
+
   const load = useCallback(
     async (opts?: { silent?: boolean; force?: boolean }) => {
       const silent = opts?.silent;
       const force = opts?.force;
       try {
-        const list = await resolveFetchPatientsList(dispatch, store.getState, { force });
-        console.log('[PreventiveFlow] SelectPatient load patients', {
-          count: Array.isArray(list) ? list.length : 0,
+        console.log('[PreventiveFlow] SelectPatient GET /patients start', {
+          fromScreen,
+          isEntryGate,
           force,
           silent,
         });
+        const list = await resolveFetchPatientsList(dispatch, store.getState, { force });
+        console.log('[PreventiveFlow] SelectPatient GET /patients done', {
+          count: Array.isArray(list) ? list.length : 0,
+          fromScreen,
+          isEntryGate,
+          force,
+          silent,
+          patientIds: Array.isArray(list) ? list.map(p => p.id) : [],
+        });
         const stillLoading = Boolean(store.getState()?.preventive?.patients?.loading);
         if (!silent && Array.isArray(list) && list.length === 0 && !stillLoading) {
-          navigation.replace('PatientDetail', { fromScreen: 'PreventiveCart', screening });
+          console.log('[PreventiveFlow] SelectPatient empty list -> PatientDetail', {
+            fromScreen: emptyListFromScreen,
+          });
+          navigation.replace('PatientDetail', {
+            fromScreen: emptyListFromScreen,
+            screening,
+          });
         }
         return list;
-      } catch {
+      } catch (error) {
+        console.log('[PreventiveFlow] SelectPatient GET /patients failed', {
+          fromScreen,
+          isEntryGate,
+          error,
+        });
         if (!silent) {
-          navigation.replace('PatientDetail', { fromScreen: 'PreventiveCart', screening });
+          navigation.replace('PatientDetail', {
+            fromScreen: emptyListFromScreen,
+            screening,
+          });
         }
         return [];
       } finally {
         if (!silent) setInitialLoadDone(true);
       }
     },
-    [dispatch, store, navigation, screening],
+    [dispatch, store, navigation, screening, fromScreen, isEntryGate, emptyListFromScreen],
   );
 
   useEffect(() => {
@@ -247,16 +294,26 @@ export default function SelectPatient({ navigation, route }: Props) {
     }
   }, [load]);
 
+  const handleBack = useCallback(() => {
+    if (isEntryGate) {
+      console.log('[PreventiveFlow] SelectPatient back -> Home (entry gate)');
+      navigation.navigate('Home');
+      return;
+    }
+    console.log('[PreventiveFlow] SelectPatient back -> PreventiveCart');
+    navigation.navigate('PreventiveCart');
+  }, [isEntryGate, navigation]);
+
   useFocusEffect(
     useCallback(() => {
       const onBackPress = () => {
-        navigation.navigate('PreventiveCart');
+        handleBack();
         return true;
       };
 
       const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
       return () => subscription.remove();
-    }, [navigation]),
+    }, [handleBack]),
   );
 
   useFocusEffect(
@@ -358,13 +415,23 @@ export default function SelectPatient({ navigation, route }: Props) {
       await AsyncStorage.setItem(STORAGE_KEYS.patientId, String(selectedId));
       console.log('[PreventiveFlow] SelectPatient Continue', {
         selectedPatientId: selectedId,
+        selectedPatientName: selectedPatient?.full_name ?? null,
+        selectedPatientUhid: selectedPatient?.uhid ?? null,
         storageKey: STORAGE_KEYS.patientId,
         fromScreen,
+        isEntryGate,
         screening,
+        nextScreen: isEntryGate ? 'PreventiveHealth' : 'PreventiveBookingDetail',
       });
     } catch {
       // ignore storage errors
     }
+
+    if (isEntryGate) {
+      navigation.replace('PreventiveHealth');
+      return;
+    }
+
     navigation.navigate('PreventiveBookingDetail', { fromScreen, screening });
   };
 
@@ -400,8 +467,11 @@ export default function SelectPatient({ navigation, route }: Props) {
       }
 
       if (!Array.isArray(list) || list.length === 0) {
+        console.log('[PreventiveFlow] SelectPatient all patients deleted -> PatientDetail', {
+          fromScreen: emptyListFromScreen,
+        });
         navigation.replace('PatientDetail', {
-          fromScreen: 'PreventiveCart',
+          fromScreen: emptyListFromScreen,
           screening,
         });
       }
@@ -412,7 +482,15 @@ export default function SelectPatient({ navigation, route }: Props) {
       setRemoveConfirmVisible(false);
       setPendingRemove(null);
     }
-  }, [removeBusy, pendingRemove, dismissDeletePopup, dispatch, navigation, screening]);
+  }, [
+    removeBusy,
+    pendingRemove,
+    dismissDeletePopup,
+    dispatch,
+    navigation,
+    screening,
+    emptyListFromScreen,
+  ]);
 
   if (loading && !initialLoadDone && patients.length === 0) {
     return <AppSkeleton variant="default" />;
@@ -429,12 +507,12 @@ export default function SelectPatient({ navigation, route }: Props) {
       <SafeAreaView style={styles.headerSafe} edges={['top', 'left', 'right']}>
         <PreventiveHealthHeader
           title={t('preventiveHealth.selectPatient.headerTitle')}
-          onBackPress={() => navigation.navigate('PreventiveCart')}
+          onBackPress={handleBack}
           showRight1
           rightIcon1="add"
           onRightPress1={() =>
             navigation.navigate('PatientDetail', {
-              fromScreen: 'SelectPatient',
+              fromScreen: isEntryGate ? PREVENTIVE_ENTRY_FROM_SCREEN : 'SelectPatient',
               screening,
             })
           }
