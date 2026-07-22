@@ -17,7 +17,10 @@ import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
 import LinearGradient from 'react-native-linear-gradient';
 import DynamicModal from '../../Components/DynamicModal';
 import CustomPopup from '../../../../Components/ReusableComponents/CustomPopup';
-import { sendPatientAuthOtp } from '../../../../features/PreventiveHealth/PreventiveAPI';
+import {
+  sendPatientAuthOtp,
+  sendPatientRegisterOtpAuth,
+} from '../../../../features/PreventiveHealth/PreventiveAPI';
 import type { RootStackParamList } from '../../../../navigation/types';
 
 const BACKGROUND_IMAGE = require('../../../../assets/WelcomeBG.png');
@@ -44,6 +47,81 @@ type ApiErrorShape = {
 };
 
 const onlyDigits = (value: string) => value.replace(/\D/g, '').slice(0, 10);
+
+const extractApiMessage = (error: ApiErrorShape): string | undefined =>
+  error?.response?.data?.message || error?.message;
+
+const isMobileAlreadyVerifiedMessage = (message?: string | null): boolean => {
+  const normalized = String(message ?? '').trim().toLowerCase();
+  return (
+    normalized === 'mobile number is already verified' ||
+    normalized.includes('already verified')
+  );
+};
+
+const isMobileAlreadyRegisteredMessage = (message?: string | null): boolean => {
+  const normalized = String(message ?? '').trim().toLowerCase();
+  return (
+    normalized === 'mobile number is already registered' ||
+    normalized.includes('already registered')
+  );
+};
+
+const navigateToVerifiedNameFlow = (
+  navigation: Nav,
+  mobile: string,
+): void => {
+  console.log('======================================');
+  console.log('[PreventiveAuthLogin] FLOW DECISION');
+  console.log('Branch: already verified user');
+  console.log('Next Screen: TrialScreen');
+  console.log('Next Step: First Name -> Last Name -> Login');
+  console.log('Mobile:', mobile);
+  console.log('======================================');
+
+  navigation.navigate('TrialScreen', {
+    mobile,
+    flowType: 'login',
+  });
+};
+
+const navigateToLoginOtpFlow = async (
+  navigation: Nav,
+  mobile: string,
+): Promise<boolean> => {
+  console.log('======================================');
+  console.log('[PreventiveAuthLogin] FLOW DECISION');
+  console.log('Branch: already registered user');
+  console.log('Action: send login OTP');
+  console.log('Mobile:', mobile);
+  console.log('======================================');
+
+  const loginOtpResponse = await sendPatientAuthOtp({ mobile });
+  const loginOtpData = loginOtpResponse?.data;
+
+  console.log('======================================');
+  console.log('[PreventiveAuthLogin] LOGIN SEND OTP RESPONSE');
+  console.log(JSON.stringify(loginOtpData, null, 2));
+  console.log('Success:', loginOtpData?.success);
+  console.log('Message:', loginOtpData?.message);
+  console.log('Provider:', loginOtpData?.data?.provider);
+  console.log('======================================');
+
+  if (loginOtpData?.success) {
+    console.log('======================================');
+    console.log('[PreventiveAuthLogin] FLOW DECISION');
+    console.log('Branch: existing registered user');
+    console.log('Next Screen: LoginOTP');
+    console.log('Next Step: OTP -> Login');
+    console.log('Mobile:', mobile);
+    console.log('======================================');
+
+    navigation.navigate('LoginOTP', { mobile });
+    return true;
+  }
+
+  return false;
+};
 
 const PreventiveAuthLogin: React.FC = () => {
   const navigation = useNavigation<Nav>();
@@ -107,44 +185,129 @@ const PreventiveAuthLogin: React.FC = () => {
 
     try {
       console.log('======================================');
-      console.log('[PreventiveAuthLogin] SEND OTP REQUEST');
+      console.log('[PreventiveAuthLogin] REGISTER SEND OTP REQUEST');
       console.log('Mobile:', phoneDigits);
 
-      const response = await sendPatientAuthOtp({ mobile: phoneDigits });
-      const data = response?.data;
+      const registerOtpResponse = await sendPatientRegisterOtpAuth({
+        mobile: phoneDigits,
+      });
+      const registerOtpData = registerOtpResponse?.data;
 
-      console.log('[PreventiveAuthLogin] SEND OTP RESPONSE');
-      console.log(JSON.stringify(data, null, 2));
-      console.log('Success:', data?.success);
-      console.log('Message:', data?.message);
-      console.log('Provider:', data?.data?.provider);
+      console.log('[PreventiveAuthLogin] REGISTER SEND OTP RESPONSE');
+      console.log(JSON.stringify(registerOtpData, null, 2));
+      console.log('Success:', registerOtpData?.success);
+      console.log('Message:', registerOtpData?.message);
+      console.log('Provider:', registerOtpData?.data?.provider);
       console.log('======================================');
 
-      if (data?.success) {
-        navigation.navigate('LoginOTP', { mobile: phoneDigits });
-      } else {
-        showPopup({
-          title: 'Login Failed',
-          message: data?.message || 'No patient account found for this mobile',
-          iconName: 'alert-circle',
-          iconColor: '#E53935',
-          onConfirm: closePopup,
-        });
+      if (isMobileAlreadyVerifiedMessage(registerOtpData?.message)) {
+        navigateToVerifiedNameFlow(navigation, phoneDigits);
+        return;
       }
-    } catch (error) {
-      const apiError = error as ApiErrorShape;
-      const errorData = apiError?.response?.data;
 
-      console.log('======================================');
-      console.log('[PreventiveAuthLogin] SEND OTP ERROR');
-      console.log('Error response:', JSON.stringify(errorData, null, 2));
-      console.log('Error message:', apiError?.message);
-      console.log('======================================');
+      if (isMobileAlreadyRegisteredMessage(registerOtpData?.message)) {
+        const loginOtpSent = await navigateToLoginOtpFlow(navigation, phoneDigits);
+        if (!loginOtpSent) {
+          showPopup({
+            title: 'Login Failed',
+            message:
+              registerOtpData?.message ||
+              'Unable to send OTP. Please try again.',
+            iconName: 'alert-circle',
+            iconColor: '#E53935',
+            onConfirm: closePopup,
+          });
+        }
+        return;
+      }
+
+      if (registerOtpData?.success) {
+        console.log('======================================');
+        console.log('[PreventiveAuthLogin] FLOW DECISION');
+        console.log('Branch: new user');
+        console.log('Next Screen: PreventiveAuthSignUpOTP');
+        console.log('Next Step: OTP -> First Name -> Last Name -> Trial -> Login');
+        console.log('Mobile:', phoneDigits);
+        console.log('======================================');
+
+        navigation.navigate('PreventiveAuthSignUpOTP', {
+          mobile: phoneDigits,
+          registrationData: { mobile: phoneDigits },
+        });
+        return;
+      }
 
       showPopup({
         title: 'Login Failed',
         message:
-          errorData?.message || 'Something went wrong. Please try again.',
+          registerOtpData?.message || 'Unable to continue. Please try again.',
+        iconName: 'alert-circle',
+        iconColor: '#E53935',
+        onConfirm: closePopup,
+      });
+    } catch (error) {
+      const apiError = error as ApiErrorShape;
+      const errorData = apiError?.response?.data;
+      const errorMessage = extractApiMessage(apiError);
+
+      console.log('======================================');
+      console.log('[PreventiveAuthLogin] REGISTER SEND OTP ERROR');
+      console.log('Error response:', JSON.stringify(errorData, null, 2));
+      console.log('Error message:', apiError?.message);
+      console.log('======================================');
+
+      if (isMobileAlreadyVerifiedMessage(errorMessage)) {
+        navigateToVerifiedNameFlow(navigation, phoneDigits);
+        return;
+      }
+
+      if (isMobileAlreadyRegisteredMessage(errorMessage)) {
+        try {
+          const loginOtpSent = await navigateToLoginOtpFlow(navigation, phoneDigits);
+          if (!loginOtpSent) {
+            showPopup({
+              title: 'Login Failed',
+              message:
+                errorMessage ||
+                errorData?.message ||
+                'Unable to send OTP. Please try again.',
+              iconName: 'alert-circle',
+              iconColor: '#E53935',
+              onConfirm: closePopup,
+            });
+          }
+        } catch (loginOtpError) {
+          const loginApiError = loginOtpError as ApiErrorShape;
+          const loginErrorMessage = extractApiMessage(loginApiError);
+
+          console.log('======================================');
+          console.log('[PreventiveAuthLogin] LOGIN SEND OTP ERROR');
+          console.log(
+            'Error response:',
+            JSON.stringify(loginApiError?.response?.data, null, 2),
+          );
+          console.log('Error message:', loginApiError?.message);
+          console.log('======================================');
+
+          showPopup({
+            title: 'Login Failed',
+            message:
+              loginErrorMessage ||
+              'Unable to send OTP. Please try again.',
+            iconName: 'alert-circle',
+            iconColor: '#E53935',
+            onConfirm: closePopup,
+          });
+        }
+        return;
+      }
+
+      showPopup({
+        title: 'Login Failed',
+        message:
+          errorMessage ||
+          errorData?.message ||
+          'Something went wrong. Please try again.',
         iconName: 'alert-circle',
         iconColor: '#E53935',
         onConfirm: closePopup,

@@ -455,7 +455,8 @@ export default function PreventiveBookingDetail({ navigation, route }: any) {
       return;
     }
     if (fromScreen === "PreventiveCart") {
-      navigation.navigate("SelectPatient");
+      console.log("[PreventiveFlow] PreventiveBookingDetail back -> PreventiveCart");
+      navigation.navigate("PreventiveCart");
       return;
     }
     navigation.goBack();

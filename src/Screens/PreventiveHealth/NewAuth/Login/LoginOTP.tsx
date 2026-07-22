@@ -251,7 +251,13 @@ const LoginOTP: React.FC = () => {
         }
 
         void logStoredSessionToConsole('[PreventiveAuthLogin]', 'preventiveHealth');
-        navigation.navigate('PreventiveHealth');
+        console.log('======================================');
+        console.log('[PreventiveAuthLogin] FLOW DECISION');
+        console.log('Branch: login complete');
+        console.log('Next Screen: SelectPatient');
+        console.log('Next Step: GET /patients -> pick patient -> PreventiveHealth');
+        console.log('======================================');
+        navigation.replace('SelectPatient', { fromScreen: 'PreventiveHealth' });
       } else {
         const errorMessage =
           responseData?.message ||

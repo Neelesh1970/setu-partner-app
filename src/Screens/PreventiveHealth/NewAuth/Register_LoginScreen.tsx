@@ -127,12 +127,6 @@ const RegisterLoginScreen: React.FC = () => {
     navigation.navigate('PreventiveAuthLogin');
   }, [navigation]);
 
-  const handleNavigateToSignUp = useCallback(() => {
-    // Previous full registration form (PreventiveHealth/Auth/SignUP):
-    // navigation.navigate('SignUp');
-    navigation.navigate('PreventiveAuthSignUp');
-  }, [navigation]);
-
   return (
     <View style={styles.root}>
       <StatusBar
@@ -189,9 +183,9 @@ const RegisterLoginScreen: React.FC = () => {
             primaryButtonStyle={styles.actionButton}
             secondaryButtonStyle={styles.actionButton}
             primaryButtonText="Log In"
-            secondaryButtonText="Sign Up"
             onPrimaryPress={handleNavigateToLogin}
-            onSecondaryPress={handleNavigateToSignUp}
+            // secondaryButtonText="Sign Up"
+            // onSecondaryPress={handleNavigateToSignUp}
             subtitleStyle={styles.subtitle}
           />
         </View>

@@ -87,6 +87,7 @@ type HomeCompletedPreviewItem = {
   patientId: string;
   testName: string;
   location: string;
+  bookingId?: string | null;
 };
 
 const formatHomeWalletMoney = (amount: number | null, currency?: string) => {
@@ -600,6 +601,7 @@ const HomeScreen: React.FC = () => {
             patientId: String(p.user_id ?? p.id ?? ''),
             testName: labPatientTestLabel(p),
             location: labPatientLocationLabel(p),
+            bookingId: p.booking_id ?? null,
           })),
         );
       } catch {
@@ -720,10 +722,19 @@ const HomeScreen: React.FC = () => {
   );
 
   const goTestDetails = useCallback(
-    (labPatientRowId: string, filter: 'upcoming' | 'completed') => {
+    (
+      labPatientRowId: string,
+      filter: 'upcoming' | 'completed',
+      bookingId?: string | null,
+    ) => {
       const id = labPatientRowId.trim();
       if (!id) return;
-      navigation.navigate('TestDetails', { patientId: id, filter });
+      const bookingKey = (bookingId ?? '').trim();
+      navigation.navigate('TestDetails', {
+        patientId: id,
+        filter,
+        ...(bookingKey ? { bookingId: bookingKey } : {}),
+      });
     },
     [navigation],
   );
@@ -835,7 +846,7 @@ const HomeScreen: React.FC = () => {
                 paymentStatus={item.paymentStatus}
                 paymentMethod={item.paymentMethod}
                 onSeeDetails={() => {
-                  goTestDetails(item.labPatientRowId, 'upcoming');
+                  goTestDetails(item.labPatientRowId, 'upcoming', item.bookingId);
                 }}
                 onPerformTest={() => {
                   const allDevices = [
@@ -929,7 +940,9 @@ const HomeScreen: React.FC = () => {
                 patientId={item.patientId}
                 testName={item.testName}
                 location={item.location}
-                onSeeDetails={() => goTestDetails(item.labPatientRowId, 'completed')}
+                onSeeDetails={() =>
+                  goTestDetails(item.labPatientRowId, 'completed', item.bookingId)
+                }
                 onViewReport={goReports}
               />
             ))
