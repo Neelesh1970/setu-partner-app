@@ -1,7 +1,17 @@
 /** Asha ECG streams binary waveform bytes over Bluetooth Classic (not image files). */
 
 const BACKSLASH_BYTE = 0x5c;
-const MAX_STORED_ECG_SAMPLES = 2000;
+
+/**
+ * Tunable ECG sample buffer size (interleaved dual-lead stream).
+ *
+ * Change ONLY this value to try different densities:
+ * - ~300–400 → more readable PQRST spacing on phone / report
+ * - ~1000–2000 → longer strip, denser when width is limited
+ *
+ * Used by: live stream clipping, local store, Capture ECG / report image.
+ */
+export const MAX_STORED_ECG_SAMPLES = 400;
 
 export type AshaEcgPayloadKind = 'wave-start' | 'status' | 'samples' | 'unknown';
 
@@ -206,5 +216,3 @@ export function downsampleEcgPreservePeaks(samples: number[], targetCount: numbe
 
   return output;
 }
-
-export { MAX_STORED_ECG_SAMPLES };

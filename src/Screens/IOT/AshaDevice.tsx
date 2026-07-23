@@ -19,6 +19,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { BluetoothDevice } from 'react-native-bluetooth-classic';
 import type { BluetoothEventSubscription } from 'react-native-bluetooth-classic';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import ReactNativeBlobUtil from 'react-native-blob-util';
+import { captureRef } from 'react-native-view-shot';
 import PreventiveHealthHeader from '../Home/PreventiveUser/PreventiveHealthHeader';
 import { COLORS, FONT_SIZE, SPACING } from '../../Constants/theme';
 import type { RootStackParamList } from '../../navigation/types';
@@ -35,11 +37,11 @@ import {
   saveClassicDeviceAddress,
   sendClassicDeviceCommand,
   subscribeClassicDeviceData,
+  cancelClassicDiscovery,
   BLUETOOTH_CLASSIC_REBUILD_MESSAGE,
   type AshaDeviceCommand,
 } from '../../Services/ashaBluetoothClassic';
 import {
-  appendEcgSamples,
   buildStoredEcgPayload,
   classifyAshaEcgPayload,
   formatEcgSummary,
@@ -50,6 +52,7 @@ import {
 } from '../../Utils/ashaEcgParser';
 import {
   postAshaResult,
+  type AshaMultipartFile,
   type AshaResultData,
 } from '../../api/iotDeviceResults';
 import axiosInstance from '../../api/axiosInstance';
@@ -59,7 +62,6 @@ import {
   ASHA_STETH_MIN_RECORD_MS,
   ASHA_STETH_POST_STOP_WAIT_MS,
   analyzeStethoscopeBuffer,
-  buildAshaStethoscopeApiResult,
   buildStoredStethPayload,
   isAshaStethStatusOnlyPayload,
   parseAshaStethStatusMessage,
@@ -218,10 +220,21 @@ function logEcgPayloadDebug(
 
 /** Console debug for stethoscope / heartbeat audio chunks received over Bluetooth Classic. */
 function logStethPayloadDebug(
-  _payload: string,
-  _context: string,
-  _extra?: Record<string, unknown>,
-): void {}
+  payload: string,
+  context: string,
+  extra?: Record<string, unknown>,
+): void {
+  const preview =
+    payload.length > 120
+      ? `${payload.slice(0, 60)}…(${payload.length} chars)…${payload.slice(-40)}`
+      : payload;
+  console.log('[ASHA Steth]', context, {
+    chunkChars: payload.length,
+    preview,
+    containsWav: payloadIncludesWav(payload),
+    ...extra,
+  });
+}
 
 const DEVICE_LABEL: Record<DeviceType, string> = {
   g: 'Glucometer',
@@ -371,10 +384,11 @@ function computeMap(systolic: number, diastolic: number): number {
   return Math.round(diastolic + (systolic - diastolic) / 3);
 }
 
-function buildAshaResultData(
-  values: Reading['values'],
-  stethPayload?: AshaStoredStethPayload | null,
-): AshaResultData {
+/**
+ * Vitals-only `result_data` for multipart upload.
+ * Stethoscope audio and ECG image are sent as separate FormData files.
+ */
+function buildAshaResultData(values: Reading['values']): AshaResultData {
   const result: AshaResultData = {};
   const pulseRate = extractFirstNumber(values.pulse);
 
@@ -410,11 +424,32 @@ function buildAshaResultData(
     };
   }
 
-  if (stethPayload) {
-    result.stethoscope = buildAshaStethoscopeApiResult(stethPayload);
-  }
-
   return result;
+}
+
+function toFileUri(path: string): string {
+  if (!path) return path;
+  if (path.startsWith('file://') || path.startsWith('content://')) {
+    return path;
+  }
+  return `file://${path}`;
+}
+
+function stripFileScheme(path: string): string {
+  return path.replace(/^file:\/\//, '');
+}
+
+async function writeHeartbeatAudioTempFile(
+  payload: AshaStoredStethPayload,
+): Promise<AshaMultipartFile> {
+  const name = `heartbeat_${Date.now()}.wav`;
+  const path = `${ReactNativeBlobUtil.fs.dirs.CacheDir}/${name}`;
+  await ReactNativeBlobUtil.fs.writeFile(path, payload.audioBase64, 'base64');
+  return {
+    uri: toFileUri(path),
+    name,
+    type: payload.audioMime || 'audio/wav',
+  };
 }
 
 function hasAshaApiResultData(resultData: AshaResultData): boolean {
@@ -636,11 +671,14 @@ const AshaDevice: React.FC = () => {
   const ecgCaptureActiveRef = useRef(false);
   const ecgPayloadBufferRef = useRef('');
   const stethCaptureActiveRef = useRef(false);
+  /** True from Start (`s`) until finalize after Stop — prevents post-stop mic data from re-arming capture. */
+  const stethSessionOpenRef = useRef(false);
   const stethPayloadBufferRef = useRef('');
   const stethStopFinalizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stethMinRecordTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stethStatusMessageRef = useRef('');
   const stethCanStopRef = useRef(false);
+  const stethRecordStartedAtRef = useRef<number | null>(null);
 
   const [patientId, setPatientId] = useState('');
   const [selectedCommand, setSelectedCommand] = useState<DeviceType | 'unknown'>('unknown');
@@ -660,6 +698,9 @@ const AshaDevice: React.FC = () => {
   const [stethCanStop, setStethCanStop] = useState(false);
   const [capturedStethPayload, setCapturedStethPayload] =
     useState<AshaStoredStethPayload | null>(null);
+  const [capturedEcgImage, setCapturedEcgImage] = useState<AshaMultipartFile | null>(null);
+  const [isCapturingEcg, setIsCapturingEcg] = useState(false);
+  const ecgWaveformCaptureRef = useRef<View>(null);
 
   const latestValues = useMemo(() => {
     try {
@@ -694,13 +735,28 @@ const AshaDevice: React.FC = () => {
           const activeCommand = selectedCommandRef.current;
 
           const isStethStream =
-            stethCaptureActiveRef.current ||
-            activeCommand === 's' ||
-            activeCommand === 'q';
+            stethSessionOpenRef.current &&
+            (stethCaptureActiveRef.current ||
+              activeCommand === 's' ||
+              activeCommand === 'q');
 
           if (isStethStream) {
             if (!stethCaptureActiveRef.current) {
               stethCaptureActiveRef.current = true;
+              setStethRecordingActive(true);
+              if (!stethRecordStartedAtRef.current) {
+                stethRecordStartedAtRef.current = Date.now();
+              }
+              if (!stethCanStopRef.current && !stethMinRecordTimerRef.current) {
+                const elapsed = Date.now() - (stethRecordStartedAtRef.current ?? Date.now());
+                const remaining = Math.max(0, ASHA_STETH_MIN_RECORD_MS - elapsed);
+                stethMinRecordTimerRef.current = setTimeout(() => {
+                  setStethCanStop(true);
+                  stethCanStopRef.current = true;
+                  stethMinRecordTimerRef.current = null;
+                  console.log('[ASHA Steth] min-record elapsed — Stop unlocked');
+                }, remaining);
+              }
             }
 
             if (isAshaStethStatusPayload(payload)) {
@@ -711,6 +767,11 @@ const AshaDevice: React.FC = () => {
                 mergeSessionValues(current, { steth: `Status: ${statusMsg}` }),
               );
               setStatus(`Stethoscope: ${statusMsg}`);
+              logStethPayloadDebug(payload, 'status', {
+                activeCommand,
+                statusMsg,
+                sessionOpen: stethSessionOpenRef.current,
+              });
               return;
             }
 
@@ -725,7 +786,9 @@ const AshaDevice: React.FC = () => {
             logStethPayloadDebug(payload, 'audio-chunk', {
               activeCommand,
               chunkBytes: payload.length,
+              bufferBytes: stethPayloadBufferRef.current.length,
               containsWav: payloadIncludesWav(payload),
+              canStop: stethCanStopRef.current,
             });
 
             const analysis = analyzeStethoscopeBuffer(stethPayloadBufferRef.current);
@@ -922,43 +985,56 @@ const AshaDevice: React.FC = () => {
         return null;
       }
 
-      let device = connectedDeviceRef.current;
-      if (!device || device.address !== address) {
-        device = await findClassicDeviceByAddress(address);
-        if (!device) {
-          reportAshaError(
-            'Device Not Found',
-            'Saved device not found. Pair it in Bluetooth settings, then rediscover.',
-            setStatus,
-          );
-          return null;
-        }
-      }
-
       const ready = await ensureAshaBluetoothReady();
       if (!ready.ok) {
         reportAshaError('Bluetooth Error', ready.message, setStatus);
         return null;
       }
 
-      setStatus(`Connecting to ${device.name || device.address}...`);
-
-      const needsFreshConnection = !dataSubscriptionRef.current;
-      if (needsFreshConnection) {
-        try {
-          if (await device.isConnected()) {
-            await disconnectClassicDevice(device);
-          }
-        } catch {
+      let device = connectedDeviceRef.current;
+      if (!device || device.address !== address) {
+        device = await findClassicDeviceByAddress(address);
+        if (!device) {
+          reportAshaError(
+            'Device Not Found',
+            'Saved device not found. Pair Dual-SPP in Bluetooth settings, then tap to connect again.',
+            setStatus,
+          );
+          return null;
         }
       }
+
+      setStatus(`Connecting to ${device.name || device.address}...`);
+
+      // If already connected with an active listener, reuse — do NOT disconnect/reconnect
+      // (disconnect+reconnect during connect is a common Xiaomi/MIUI native crash trigger).
+      try {
+        const alreadyConnected = await device.isConnected();
+        if (alreadyConnected && dataSubscriptionRef.current) {
+          connectedDeviceRef.current = device;
+          setIsDeviceConnected(true);
+          setStatus(`Connected to ${device.name || ASHA_TARGET_DEVICE_NAME}`);
+          return device;
+        }
+        if (alreadyConnected && !dataSubscriptionRef.current) {
+          connectedDeviceRef.current = device;
+          attachDataListener(device);
+          setIsDeviceConnected(true);
+          setStatus(`Connected to ${device.name || ASHA_TARGET_DEVICE_NAME}`);
+          return device;
+        }
+      } catch (error) {
+        console.log('[ASHA BT] isConnected check failed', error);
+      }
+
+      await cancelClassicDiscovery();
 
       const connected = await connectClassicDevice(device);
       if (!connected) {
         setIsDeviceConnected(false);
         reportAshaError(
           'Connection Failed',
-          'Could not connect over Bluetooth Classic (RFCOMM).',
+          'Could not connect to Dual-SPP over Bluetooth Classic. Make sure the kit is on, paired, and close to the phone, then try again.',
           setStatus,
         );
         return null;
@@ -967,9 +1043,11 @@ const AshaDevice: React.FC = () => {
       connectedDeviceRef.current = device;
       attachDataListener(device);
       setIsDeviceConnected(true);
+      setStatus(`Connected to ${device.name || ASHA_TARGET_DEVICE_NAME}`);
       return device;
     } catch (error) {
       const message = getErrorMessage(error, 'Bluetooth connection failed.');
+      console.log('[ASHA BT] ensureConnectedDevice error', message);
       setIsDeviceConnected(false);
       reportAshaError('Connection Error', message, setStatus);
       return null;
@@ -983,6 +1061,7 @@ const AshaDevice: React.FC = () => {
 
     setIsConnecting(true);
     setStatus('Checking Bluetooth...');
+    console.log('[ASHA BT] Dual-SPP connect tapped');
     try {
       if (!isBluetoothClassicNativeLinked()) {
         reportAshaError('Bluetooth Unavailable', BLUETOOTH_CLASSIC_REBUILD_MESSAGE, setStatus);
@@ -995,34 +1074,57 @@ const AshaDevice: React.FC = () => {
         return;
       }
 
-      setStatus(`Searching for ${ASHA_TARGET_DEVICE_NAME}...`);
+      setStatus(`Looking up ${ASHA_TARGET_DEVICE_NAME}...`);
       let device = await findClassicDeviceByAddress(ASHA_TARGET_DEVICE_ADDRESS);
 
+      // Prefer already-paired device. Discovery is a fallback only (discovery+connect crashes on some OEMs).
       if (!device) {
-        const devices = await discoverClassicDevices();
-        device = devices.find(
-          discoveredDevice => discoveredDevice.address === ASHA_TARGET_DEVICE_ADDRESS,
-        ) ?? null;
+        setStatus(`Searching for ${ASHA_TARGET_DEVICE_NAME}...`);
+        try {
+          const devices = await discoverClassicDevices();
+          device =
+            devices.find(
+              discoveredDevice => discoveredDevice.address === ASHA_TARGET_DEVICE_ADDRESS,
+            ) ??
+            devices.find(discoveredDevice =>
+              String(discoveredDevice.name || '')
+                .toLowerCase()
+                .includes('dual-spp'),
+            ) ??
+            null;
+        } catch (discoverError) {
+          const message = getErrorMessage(
+            discoverError,
+            'Bluetooth discovery failed. Pair Dual-SPP in system Bluetooth settings first.',
+          );
+          console.log('[ASHA BT] discovery error', message);
+          reportAshaError('Discovery Error', message, setStatus);
+          return;
+        } finally {
+          await cancelClassicDiscovery();
+        }
       }
 
       if (!device) {
         const message =
           Platform.OS === 'android'
-            ? `${ASHA_TARGET_DEVICE_NAME} not found. Pair it in Bluetooth settings, then try again.`
+            ? `${ASHA_TARGET_DEVICE_NAME} not found. Open Bluetooth Settings, pair Dual-SPP, then return and tap Connect.`
             : `${ASHA_TARGET_DEVICE_NAME} not found among paired devices.`;
         reportAshaError('Device Not Found', message, setStatus);
         return;
       }
 
-      await saveClassicDeviceAddress(ASHA_TARGET_DEVICE_ADDRESS);
-      setSavedDeviceAddress(ASHA_TARGET_DEVICE_ADDRESS);
+      await saveClassicDeviceAddress(device.address || ASHA_TARGET_DEVICE_ADDRESS);
+      setSavedDeviceAddress(device.address || ASHA_TARGET_DEVICE_ADDRESS);
 
-      const connected = await ensureConnectedDevice(ASHA_TARGET_DEVICE_ADDRESS);
+      const connected = await ensureConnectedDevice(device.address || ASHA_TARGET_DEVICE_ADDRESS);
       if (connected) {
         setStatus(`Connected to ${connected.name || ASHA_TARGET_DEVICE_NAME}`);
+        console.log('[ASHA BT] Dual-SPP connected', connected.address);
       }
     } catch (error) {
       const message = getErrorMessage(error, 'Bluetooth connection failed.');
+      console.log('[ASHA BT] connectBluetoothDevice error', message);
       reportAshaError('Connection Error', message, setStatus);
     } finally {
       setIsConnecting(false);
@@ -1050,6 +1152,15 @@ const AshaDevice: React.FC = () => {
 
     if (storedPayload) {
       setCapturedStethPayload(storedPayload);
+      setStatus(
+        `Stethoscope saved (${storedPayload.byteCount} bytes WAV, ~${storedPayload.beatCount} beats)`,
+      );
+    } else {
+      setStatus(
+        analysis.isWav
+          ? 'Stethoscope WAV incomplete — try Stop again after device finishes sending.'
+          : 'No stethoscope WAV received — keep the session open until audio arrives, then Stop.',
+      );
     }
 
     logStethPayloadDebug(buffer, 'capture-complete', {
@@ -1063,10 +1174,36 @@ const AshaDevice: React.FC = () => {
       hasStoredPayload: Boolean(storedPayload),
     });
 
+    stethSessionOpenRef.current = false;
+    stethRecordStartedAtRef.current = null;
     setStethRecordingActive(false);
     setStethCanStop(false);
     stethCanStopRef.current = false;
     stethCaptureActiveRef.current = false;
+  }, []);
+
+  const unlockStethStopIfReady = useCallback((): boolean => {
+    if (stethCanStopRef.current) {
+      return true;
+    }
+
+    const startedAt = stethRecordStartedAtRef.current;
+    const elapsed = startedAt ? Date.now() - startedAt : 0;
+    const hasWav = payloadIncludesWav(stethPayloadBufferRef.current);
+    const hasSubstantialAudio = stethPayloadBufferRef.current.length > 2048;
+
+    if (elapsed >= ASHA_STETH_MIN_RECORD_MS || hasWav || hasSubstantialAudio) {
+      stethCanStopRef.current = true;
+      setStethCanStop(true);
+      console.log('[ASHA Steth] Stop unlocked', {
+        elapsedMs: elapsed,
+        hasWav,
+        bufferBytes: stethPayloadBufferRef.current.length,
+      });
+      return true;
+    }
+
+    return false;
   }, []);
 
   const runCommand = useCallback(
@@ -1075,13 +1212,27 @@ const AshaDevice: React.FC = () => {
         return;
       }
 
-      if (command === 'q' && !stethCanStopRef.current && stethCaptureActiveRef.current) {
-        reportAshaError(
-          'Stethoscope',
-          `Please record for at least ${ASHA_STETH_MIN_RECORD_MS / 1000} seconds before stopping.`,
-          setStatus,
-        );
-        return;
+      if (command === 'q' && stethSessionOpenRef.current) {
+        const canStop = unlockStethStopIfReady();
+        console.log('[ASHA Steth] Stop pressed', {
+          canStop,
+          sessionOpen: stethSessionOpenRef.current,
+          captureActive: stethCaptureActiveRef.current,
+          startedAt: stethRecordStartedAtRef.current,
+          elapsedMs: stethRecordStartedAtRef.current
+            ? Date.now() - stethRecordStartedAtRef.current
+            : null,
+          bufferBytes: stethPayloadBufferRef.current.length,
+          containsWav: payloadIncludesWav(stethPayloadBufferRef.current),
+        });
+        if (!canStop) {
+          reportAshaError(
+            'Stethoscope',
+            `Please record for at least ${ASHA_STETH_MIN_RECORD_MS / 1000} seconds before stopping.`,
+            setStatus,
+          );
+          return;
+        }
       }
 
       setIsBusy(true);
@@ -1091,9 +1242,12 @@ const AshaDevice: React.FC = () => {
       if (command === 'e') {
         ecgCaptureActiveRef.current = true;
         ecgPayloadBufferRef.current = '';
+        stethSessionOpenRef.current = false;
         stethCaptureActiveRef.current = false;
         stethPayloadBufferRef.current = '';
+        stethRecordStartedAtRef.current = null;
         setEcgSamples([]);
+        setCapturedEcgImage(null);
         setSessionValues(current => {
           const next = { ...current };
           delete next.ecg;
@@ -1110,9 +1264,11 @@ const AshaDevice: React.FC = () => {
         }
         ecgCaptureActiveRef.current = false;
         ecgPayloadBufferRef.current = '';
+        stethSessionOpenRef.current = true;
         stethCaptureActiveRef.current = true;
         stethPayloadBufferRef.current = '';
         stethStatusMessageRef.current = '';
+        stethRecordStartedAtRef.current = Date.now();
         setCapturedStethPayload(null);
         setStethRecordingActive(true);
         setStethCanStop(false);
@@ -1126,7 +1282,12 @@ const AshaDevice: React.FC = () => {
         stethMinRecordTimerRef.current = setTimeout(() => {
           setStethCanStop(true);
           stethCanStopRef.current = true;
+          stethMinRecordTimerRef.current = null;
+          console.log('[ASHA Steth] min-record elapsed — Stop unlocked');
         }, ASHA_STETH_MIN_RECORD_MS);
+        console.log('[ASHA Steth] Start session opened', {
+          minRecordMs: ASHA_STETH_MIN_RECORD_MS,
+        });
       } else if (command === 'q') {
         ecgCaptureActiveRef.current = false;
         ecgPayloadBufferRef.current = '';
@@ -1151,7 +1312,13 @@ const AshaDevice: React.FC = () => {
           );
           return;
         }
-        setStatus(`Waiting for ${DEVICE_LABEL[command]} data...`);
+        if (command === 'q') {
+          setStatus(
+            `Waiting up to ${ASHA_STETH_POST_STOP_WAIT_MS / 1000}s for stethoscope audio from device...`,
+          );
+        } else {
+          setStatus(`Waiting for ${DEVICE_LABEL[command]} data...`);
+        }
       } catch (error) {
         const message = getErrorMessage(error, 'Bluetooth command failed.');
         reportAshaError('Command Error', message, setStatus);
@@ -1160,6 +1327,10 @@ const AshaDevice: React.FC = () => {
           if (stethStopFinalizeTimerRef.current) {
             clearTimeout(stethStopFinalizeTimerRef.current);
           }
+          console.log('[ASHA Steth] Stop command sent — waiting for audio', {
+            waitMs: ASHA_STETH_POST_STOP_WAIT_MS,
+            bufferBytes: stethPayloadBufferRef.current.length,
+          });
           stethStopFinalizeTimerRef.current = setTimeout(() => {
             finalizeStethCapture('stop-wait-complete');
           }, ASHA_STETH_POST_STOP_WAIT_MS);
@@ -1167,7 +1338,7 @@ const AshaDevice: React.FC = () => {
         setIsBusy(false);
       }
     },
-    [ensureConnectedDevice, finalizeStethCapture, isBusy],
+    [ensureConnectedDevice, finalizeStethCapture, isBusy, unlockStethStopIfReady],
   );
 
   const storeLatestReading = useCallback(() => {
@@ -1280,13 +1451,16 @@ const AshaDevice: React.FC = () => {
     }
     ecgCaptureActiveRef.current = false;
     ecgPayloadBufferRef.current = '';
+    stethSessionOpenRef.current = false;
     stethCaptureActiveRef.current = false;
     stethPayloadBufferRef.current = '';
     stethStatusMessageRef.current = '';
     stethCanStopRef.current = false;
+    stethRecordStartedAtRef.current = null;
     setStethRecordingActive(false);
     setStethCanStop(false);
     setCapturedStethPayload(null);
+    setCapturedEcgImage(null);
     setSessionValues({});
     setLatestRawData('');
     setEcgSamples([]);
@@ -1319,10 +1493,70 @@ const AshaDevice: React.FC = () => {
   const spo2Display = formatPulseOximeterDisplay(latestValues.spo2, latestValues.pulse);
 
   const ashaResultData = useMemo(
-    () => buildAshaResultData(latestValues, capturedStethPayload),
-    [latestValues, capturedStethPayload],
+    () => buildAshaResultData(latestValues),
+    [latestValues],
   );
-  const canSaveResult = hasAshaApiResultData(ashaResultData);
+  const canSaveResult =
+    hasAshaApiResultData(ashaResultData) ||
+    Boolean(capturedStethPayload) ||
+    Boolean(capturedEcgImage);
+
+  const handleCaptureEcg = useCallback(async (): Promise<void> => {
+    console.log('ECG sample count:', ecgSamples.length);
+
+    if (ecgSamples.length === 0) {
+      Alert.alert(
+        'No ECG waveform',
+        'Start ECG and wait until the full waveform is visible before capturing.',
+      );
+      return;
+    }
+
+    if (!ecgWaveformCaptureRef.current) {
+      Alert.alert('Capture failed', 'ECG waveform view is not ready. Please try again.');
+      return;
+    }
+
+    setIsCapturingEcg(true);
+    try {
+      // Full-width report strip: capture the full showFullWave plot (all stored samples).
+      const captureWidth = Math.min(
+        2480,
+        Math.max(1400, Math.ceil(ecgSamples.length / 2) * 4),
+      );
+      const imagePath = await captureRef(ecgWaveformCaptureRef, {
+        format: 'png',
+        quality: 1,
+        result: 'tmpfile',
+        width: captureWidth,
+      });
+      const normalizedPath = stripFileScheme(String(imagePath));
+      let fileSize: number | string = 'unknown';
+      try {
+        const stat = await ReactNativeBlobUtil.fs.stat(normalizedPath);
+        fileSize = stat.size;
+      } catch {
+        // size is debug-only
+      }
+
+      console.log('ECG image path:', imagePath);
+      console.log('ECG image size:', fileSize);
+
+      const file: AshaMultipartFile = {
+        uri: toFileUri(String(imagePath)),
+        name: `ecg_${Date.now()}.png`,
+        type: 'image/png',
+      };
+      setCapturedEcgImage(file);
+      setStatus('ECG waveform captured successfully');
+      Alert.alert('ECG captured', 'Full ECG waveform image is ready to upload with Save result.');
+    } catch (error) {
+      const message = getErrorMessage(error, 'Could not capture ECG waveform image.');
+      reportAshaError('ECG Capture', message, setStatus);
+    } finally {
+      setIsCapturingEcg(false);
+    }
+  }, [ecgSamples.length]);
 
   const handleSaveResult = useCallback(async (): Promise<void> => {
     const deviceId = routeDeviceId ?? BACKEND_ASHA_DEVICE_ID;
@@ -1344,12 +1578,27 @@ const AshaDevice: React.FC = () => {
       return;
     }
 
+    if (ecgSamples.length > 0 && !capturedEcgImage) {
+      Alert.alert(
+        'ECG not captured',
+        'Please press "Capture ECG" to save the full waveform image before uploading results.',
+      );
+      return;
+    }
+
     setIsSavingResult(true);
     try {
+      let heartbeatAudio: AshaMultipartFile | null = null;
+      if (capturedStethPayload?.audioBase64) {
+        heartbeatAudio = await writeHeartbeatAudioTempFile(capturedStethPayload);
+      }
+
       await postAshaResult({
         deviceId,
         bookingItemId,
         resultData: ashaResultData,
+        ecgImage: capturedEcgImage,
+        heartbeatAudio,
       });
     } catch {
     } finally {
@@ -1366,11 +1615,12 @@ const AshaDevice: React.FC = () => {
   }, [
     routeDeviceId,
     routeBookingItemId,
-    routeBookingId,
     routeIsMultiDevice,
     ashaResultData,
-    latestValues,
     canSaveResult,
+    capturedEcgImage,
+    capturedStethPayload,
+    ecgSamples.length,
     navigation,
   ]);
 
@@ -1427,7 +1677,15 @@ const AshaDevice: React.FC = () => {
           <TouchableOpacity
             style={styles.connectedDeviceCard}
             onPress={() => {
-              void connectBluetoothDevice();
+              try {
+                void connectBluetoothDevice();
+              } catch (error) {
+                const message =
+                  error instanceof Error ? error.message : 'Bluetooth connect failed unexpectedly.';
+                console.log('[ASHA BT] connect tap sync error', message);
+                reportAshaError('Connection Error', message, setStatus);
+                setIsConnecting(false);
+              }
             }}
             activeOpacity={0.9}
             disabled={isConnecting || isBusy}
@@ -1482,7 +1740,6 @@ const AshaDevice: React.FC = () => {
                     disabled={
                       isBusy ||
                       !savedDeviceAddress ||
-                      (command === 'q' && stethRecordingActive && !stethCanStop) ||
                       (command === 's' && stethRecordingActive)
                     }
                   />
@@ -1512,13 +1769,31 @@ const AshaDevice: React.FC = () => {
                 </View>
                 <Text style={styles.metricLabel}>ECG</Text>
               </View>
-              <EcgWaveform
-                samples={ecgSamples}
-                showFullWave
-                sampleCountLabel={
-                  ecgSamples.length > 0 ? `${ecgSamples.length} samples` : undefined
+              <View
+                ref={ecgWaveformCaptureRef}
+                collapsable={false}
+                style={styles.ecgCaptureTarget}
+              >
+                <EcgWaveform samples={ecgSamples} showFullWave />
+              </View>
+              <ActionButton
+                label={
+                  isCapturingEcg
+                    ? 'Capturing...'
+                    : capturedEcgImage
+                      ? 'Capture ECG (done)'
+                      : 'Capture ECG'
                 }
+                onPress={() => {
+                  void handleCaptureEcg();
+                }}
+                variant="primary"
+                fullWidth
+                disabled={isCapturingEcg || isBusy || ecgSamples.length === 0}
               />
+              {capturedEcgImage ? (
+                <Text style={styles.ecgCaptureHint}>Full ECG waveform image captured</Text>
+              ) : null}
             </View>
           ) : null}
 
@@ -1809,7 +2084,8 @@ const styles = StyleSheet.create({
   ecgCard: {
     backgroundColor: UI.CARD_BG,
     borderRadius: RADIUS_MD,
-    padding: SPACING.MD,
+    paddingVertical: SPACING.MD,
+    paddingHorizontal: SPACING.XS,
     marginTop: SPACING.XS,
     ...CARD_SHADOW,
   },
@@ -1818,6 +2094,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.SM,
     marginBottom: SPACING.SM,
+    paddingHorizontal: SPACING.SM,
+  },
+  ecgCaptureTarget: {
+    backgroundColor: COLORS.WHITE,
+    alignSelf: 'stretch',
+    width: '100%',
+  },
+  ecgCaptureHint: {
+    marginTop: SPACING.XS,
+    fontSize: FONT_SIZE.SM,
+    fontWeight: '600',
+    color: UI.PRIMARY,
+    textAlign: 'center',
   },
   ecgPlaceholder: {
     fontSize: FONT_SIZE.SM,

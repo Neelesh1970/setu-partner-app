@@ -211,10 +211,22 @@ export type AshaResultData = {
   stethoscope?: AshaStethoscopeResult;
 };
 
+/** RN multipart file part (uri / name / type) — not a web Blob. */
+export type AshaMultipartFile = {
+  uri: string;
+  name: string;
+  type: string;
+};
+
 export type PostAshaResultArgs = {
   deviceId: string;
   bookingItemId: string;
+  /** Vitals-only payload (BP / SpO2 / thermometer / glucometer). Serialized as JSON string. */
   resultData: AshaResultData;
+  /** Optional PNG of the captured full ECG waveform. */
+  ecgImage?: AshaMultipartFile | null;
+  /** Optional heartbeat / stethoscope audio file (existing WAV). */
+  heartbeatAudio?: AshaMultipartFile | null;
 };
 
 export type PostAshaResultResponse = {
@@ -224,22 +236,57 @@ export type PostAshaResultResponse = {
 };
 
 /**
- * POST `devices/:deviceId/asha-results` with the lab worker session
+ * POST `devices/:deviceId/asha-results` as multipart/form-data with the lab worker session
  * (Bearer + x-refresh-token automatically attached by `axiosInstance`).
+ *
+ * Fields: `booking_item_id`, `result_data` (JSON string), optional `ecg_image`, optional `heartbeat_audio`.
  */
 export async function postAshaResult(
   args: PostAshaResultArgs,
 ): Promise<PostAshaResultResponse> {
-  const { deviceId, bookingItemId, resultData } = args;
+  const { deviceId, bookingItemId, resultData, ecgImage, heartbeatAudio } = args;
   const path = `devices/${encodeURIComponent(deviceId)}/asha-results`;
-  const body = {
-    booking_item_id: bookingItemId,
-    result_data: resultData,
-  };
+  const resultDataJson = JSON.stringify(resultData);
+
+  const formData = new FormData();
+  formData.append('booking_item_id', bookingItemId);
+  formData.append('result_data', resultDataJson);
+
+  if (ecgImage?.uri) {
+    formData.append('ecg_image', {
+      uri: ecgImage.uri,
+      name: ecgImage.name,
+      type: ecgImage.type,
+    } as unknown as Blob);
+  }
+
+  if (heartbeatAudio?.uri) {
+    formData.append('heartbeat_audio', {
+      uri: heartbeatAudio.uri,
+      name: heartbeatAudio.name,
+      type: heartbeatAudio.type,
+    } as unknown as Blob);
+  }
+
+  console.log('Booking Item:', bookingItemId);
+  console.log('Result Data:', JSON.stringify(resultData, null, 2));
+  console.log('ECG File:', ecgImage ?? null);
+  console.log('Heartbeat Audio:', heartbeatAudio ?? null);
+  console.log('FormData fields:', {
+    booking_item_id: Boolean(bookingItemId),
+    result_data: Boolean(resultDataJson),
+    ecg_image: Boolean(ecgImage?.uri),
+    heartbeat_audio: Boolean(heartbeatAudio?.uri),
+  });
+  console.log('Sending multipart request...');
+
   try {
-    const res = await axiosInstance.post<PostAshaResultResponse>(path, body);
+    const res = await axiosInstance.post<PostAshaResultResponse>(path, formData);
+    console.log('ASHA upload success:', res.data);
     return res.data ?? {};
   } catch (err) {
+    const error = err as { response?: { data?: unknown }; message?: string };
+    console.log('ASHA upload failed:', error.response?.data || error);
     throw err;
   }
 }

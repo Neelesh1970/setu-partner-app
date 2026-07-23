@@ -1,6 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
-import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { COLORS, FONT_SIZE, SPACING } from '../../Constants/theme';
 import {
   downsampleEcgMinMaxEnvelope,
@@ -15,12 +14,12 @@ const PLOT_HEIGHT = LANE_HEIGHT * 2;
 const MIN_VERTICAL_RANGE = 28;
 const LEAD1_COLOR = '#8F1D3C';
 const LEAD2_COLOR = '#18B8C8';
-const HEART_TILE_COLOR = '#4B7FD6';
 
 type Point = { x: number; y: number };
 
 type EcgWaveformProps = {
   samples: number[];
+  /** @deprecated Kept for call-site compat; sample count is not shown on the waveform. */
   sampleCountLabel?: string;
   showFullWave?: boolean;
 };
@@ -168,7 +167,6 @@ const EcgLeadLane: React.FC<EcgLeadLaneProps> = ({ samples, color, width }) => {
 
 const EcgWaveform: React.FC<EcgWaveformProps> = ({
   samples,
-  sampleCountLabel,
   showFullWave = false,
 }) => {
   const [plotWidth, setPlotWidth] = useState(0);
@@ -188,26 +186,19 @@ const EcgWaveform: React.FC<EcgWaveformProps> = ({
     <View style={styles.wrap}>
       <View style={styles.headerRow}>
         <Text style={styles.title}>ECG Waveform</Text>
-        {sampleCountLabel ? <Text style={styles.meta}>{sampleCountLabel}</Text> : null}
       </View>
 
-      <View style={styles.deviceRow}>
-        <View style={styles.plotShell} onLayout={onPlotLayout}>
-          <EcgGrid width={plotWidth} height={PLOT_HEIGHT} />
-          {!hasWave ? (
-            <Text style={styles.empty}>Waiting for ECG wave...</Text>
-          ) : (
-            <>
-              <EcgLeadLane samples={lead1} color={LEAD1_COLOR} width={plotWidth} />
-              <View style={styles.laneSeparator} />
-              <EcgLeadLane samples={lead2} color={LEAD2_COLOR} width={plotWidth} />
-            </>
-          )}
-        </View>
-
-        <View style={styles.heartTile}>
-          <MaterialCommunityIcons name="heart-pulse" size={30} color={COLORS.WHITE} />
-        </View>
+      <View style={styles.plotShell} onLayout={onPlotLayout}>
+        <EcgGrid width={plotWidth} height={PLOT_HEIGHT} />
+        {!hasWave ? (
+          <Text style={styles.empty}>Waiting for ECG wave...</Text>
+        ) : (
+          <>
+            <EcgLeadLane samples={lead1} color={LEAD1_COLOR} width={plotWidth} />
+            <View style={styles.laneSeparator} />
+            <EcgLeadLane samples={lead2} color={LEAD2_COLOR} width={plotWidth} />
+          </>
+        )}
       </View>
     </View>
   );
@@ -217,32 +208,22 @@ export default EcgWaveform;
 
 const styles = StyleSheet.create({
   wrap: {
-    marginBottom: SPACING.SM,
+    marginBottom: 0,
+    alignSelf: 'stretch',
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     marginBottom: SPACING.XS,
-    gap: SPACING.SM,
   },
   title: {
     fontSize: FONT_SIZE.SM,
     fontWeight: '700',
     color: COLORS.TEXT_PRIMARY,
   },
-  meta: {
-    fontSize: FONT_SIZE.SM,
-    color: COLORS.TEXT_SECONDARY,
-    fontWeight: '600',
-  },
-  deviceRow: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    gap: SPACING.XS,
-  },
   plotShell: {
-    flex: 1,
+    width: '100%',
+    alignSelf: 'stretch',
     height: PLOT_HEIGHT,
     backgroundColor: COLORS.WHITE,
     borderWidth: 1,
@@ -300,15 +281,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     height: 2,
     borderRadius: 1,
-  },
-  heartTile: {
-    width: 58,
-    alignSelf: 'stretch',
-    minHeight: PLOT_HEIGHT,
-    backgroundColor: HEART_TILE_COLOR,
-    borderRadius: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   empty: {
     textAlign: 'center',
